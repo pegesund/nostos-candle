@@ -1,0 +1,237 @@
+# Complete BERT Implementation
+# Includes: multi-head attention, attention masking, token types, multi-layer
+# Run: nostos --use candle examples/11_complete_bert.nos
+
+use candle.*
+
+# =============================================================================
+# Multi-Head Self-Attention with Masking
+# =============================================================================
+
+splitHeads(x, numHeads) = {
+    shape = tensorShape(x)
+    batch = shape[0]
+    seq = shape[1]
+    hidden = shape[2]
+    headDim = hidden / numHeads
+    reshaped = reshape(x, [batch, seq, numHeads, headDim])
+    swapDims(reshaped, 1, 2)
+}
+
+mergeHeads(x) = {
+    shape = tensorShape(x)
+    batch = shape[0]
+    numHeads = shape[1]
+    seq = shape[2]
+    headDim = shape[3]
+    hidden = numHeads * headDim
+    transposed = swapDims(x, 1, 2)
+    reshape(transposed, [batch, seq, hidden])
+}
+
+# Multi-head attention WITH masking support
+multiHeadAttentionMasked(q, k, v, numHeads, headDimF, mask) = {
+    qHeads = contiguous(splitHeads(q, numHeads))
+    kHeads = contiguous(splitHeads(k, numHeads))
+    vHeads = contiguous(splitHeads(v, numHeads))
+
+    scale = tensorSqrt(fromList([headDimF]))
+    kT = contiguous(swapDims(kHeads, 2, 3))
+    scores = matmul(qHeads, kT)
+    scaledScores = tensorDiv(scores, scale)
+    maskedScores = applyAttentionMask(scaledScores, mask)
+    attnWeights = softmax(maskedScores, 3)
+    attnOutput = matmul(attnWeights, vHeads)
+    mergeHeads(contiguous(attnOutput))
+}
+
+# =============================================================================
+# BERT Embeddings (token + position + token_type)
+# =============================================================================
+
+bertEmbeddings(tokenIds, tokenTypeIds, wordEmb, posEmb, typeEmb, lnGamma, lnBeta) = {
+    tokEmb = embedding(tokenIds, wordEmb)
+    seqLen = (tensorShape(tokenIds))[1]
+    posIds = unsqueeze(arange(seqLen), 0)
+    posEmbedded = embedding(posIds, posEmb)
+    typeEmbedded = embedding(tokenTypeIds, typeEmb)
+    combined = tensorAdd(tokEmb, posEmbedded)
+    combined2 = tensorAdd(combined, typeEmbedded)
+    layerNorm(combined2, lnGamma, lnBeta)
+}
+
+# =============================================================================
+# BERT Encoder Layer
+# =============================================================================
+
+bertEncoderLayerMasked(x, mask, weights, numHeads, headDimF) = {
+    # Unpack weights list
+    wQ = weights[0]
+    wK = weights[1]
+    wV = weights[2]
+    wO = weights[3]
+    bQ = weights[4]
+    bK = weights[5]
+    bV = weights[6]
+    bO = weights[7]
+    ln1G = weights[8]
+    ln1B = weights[9]
+    wFF1 = weights[10]
+    bFF1 = weights[11]
+    wFF2 = weights[12]
+    bFF2 = weights[13]
+    ln2G = weights[14]
+    ln2B = weights[15]
+
+    # Self-attention with masking
+    q = linearBias(x, wQ, bQ)
+    k = linearBias(x, wK, bK)
+    v = linearBias(x, wV, bV)
+    attnRaw = multiHeadAttentionMasked(q, k, v, numHeads, headDimF, mask)
+    attnOut = linearBias(attnRaw, wO, bO)
+    hidden1 = layerNorm(tensorAdd(x, attnOut), ln1G, ln1B)
+
+    # Feed-forward
+    ffHidden = linearBias(hidden1, wFF1, bFF1)
+    ffAct = gelu(ffHidden)
+    ffOut = linearBias(ffAct, wFF2, bFF2)
+    layerNorm(tensorAdd(hidden1, ffOut), ln2G, ln2B)
+}
+
+# =============================================================================
+# Weight Creation Helpers
+# =============================================================================
+
+createEncoderLayerWeights(hiddenSize, intermediateSize) = {
+    # Returns list of 16 tensors: Q, K, V, O weights and biases, LN1, FF1, FF2, LN2
+    [
+        randn([hiddenSize, hiddenSize]),     # wQ
+        randn([hiddenSize, hiddenSize]),     # wK
+        randn([hiddenSize, hiddenSize]),     # wV
+        randn([hiddenSize, hiddenSize]),     # wO
+        zeros([hiddenSize]),                 # bQ
+        zeros([hiddenSize]),                 # bK
+        zeros([hiddenSize]),                 # bV
+        zeros([hiddenSize]),                 # bO
+        ones([hiddenSize]),                  # ln1G
+        zeros([hiddenSize]),                 # ln1B
+        randn([intermediateSize, hiddenSize]), # wFF1
+        zeros([intermediateSize]),           # bFF1
+        randn([hiddenSize, intermediateSize]), # wFF2
+        zeros([hiddenSize]),                 # bFF2
+        ones([hiddenSize]),                  # ln2G
+        zeros([hiddenSize])                  # ln2B
+    ]
+}
+
+createEmbeddingWeights(vocabSize, maxPosEmb, hiddenSize) = {
+    [
+        randn([vocabSize, hiddenSize]),    # wordEmb
+        randn([maxPosEmb, hiddenSize]),    # posEmb
+        randn([2, hiddenSize]),            # typeEmb (2 segments)
+        ones([hiddenSize]),                # lnGamma
+        zeros([hiddenSize])                # lnBeta
+    ]
+}
+
+# =============================================================================
+# Demo
+# =============================================================================
+
+runBertDemo() = {
+    println("=== Complete BERT Implementation ===\n")
+
+    # Configuration (BERT-tiny)
+    hiddenSize = 64
+    numHeads = 4
+    headDimF = 16.0
+    intermediateSize = 256
+    vocabSize = 1000
+    maxPosEmb = 512
+
+    println("Config: hidden=64, heads=4, intermediate=256")
+    println("        vocab=1000, layers=2\n")
+
+    println("Creating model weights...")
+    embWeights = createEmbeddingWeights(vocabSize, maxPosEmb, hiddenSize)
+    layer1 = createEncoderLayerWeights(hiddenSize, intermediateSize)
+    layer2 = createEncoderLayerWeights(hiddenSize, intermediateSize)
+    poolerW = randn([hiddenSize, hiddenSize])
+    poolerB = zeros([hiddenSize])
+    println("Weights created.\n")
+
+    # Input data (using token IDs within vocab range 0-999)
+    # Sentence 1: 5 tokens + padding
+    # Sentence 2: 3 tokens + padding
+    tokenIds = fromList([[101, 592, 88, 102, 0, 0, 0, 0],
+                         [101, 231, 102, 0, 0, 0, 0, 0]])
+    tokenTypeIds = fromList([[0, 0, 0, 0, 0, 0, 0, 0],
+                             [0, 0, 0, 0, 0, 0, 0, 0]])
+
+    println("Input tokens:")
+    println(toList(tokenIds))
+
+    # Create attention mask (pad_token_id = 0)
+    println("\n1. Creating attention mask...")
+    attentionMask = createAttentionMask(tokenIds, 0)
+    println("   Mask shape:")
+    println(tensorShape(attentionMask))
+
+    # Embeddings
+    println("\n2. BERT Embeddings (token + position + type)")
+    embedded = bertEmbeddings(tokenIds, tokenTypeIds, embWeights[0], embWeights[1], embWeights[2], embWeights[3], embWeights[4])
+    println("   Embedded shape:")
+    println(tensorShape(embedded))
+
+    # Encoder Layer 1
+    println("\n3. Encoder Layer 1")
+    hidden1 = bertEncoderLayerMasked(embedded, attentionMask, layer1, numHeads, headDimF)
+    println("   Output shape:")
+    println(tensorShape(hidden1))
+
+    # Encoder Layer 2
+    println("\n4. Encoder Layer 2")
+    hidden2 = bertEncoderLayerMasked(hidden1, attentionMask, layer2, numHeads, headDimF)
+    println("   Output shape:")
+    println(tensorShape(hidden2))
+
+    # Pooler (CLS token -> tanh)
+    println("\n5. Pooler (CLS token)")
+    clsToken = narrow(hidden2, 1, 0, 1)
+    clsFlat = squeeze(clsToken, 1)
+    pooled = tanh(linearBias(clsFlat, poolerW, poolerB))
+    println("   Pooled shape:")
+    println(tensorShape(pooled))
+
+    # Classification
+    println("\n6. Classification (3 classes)")
+    classW = randn([3, hiddenSize])
+    classB = zeros([3])
+    logits = linearBias(pooled, classW, classB)
+    probs = softmax(logits, 1)
+    println("   Probabilities:")
+    println(toList(probs))
+    predictions = argmax(probs, 1)
+    println("   Predictions:")
+    println(toList(predictions))
+
+    printSummary()
+    0
+}
+
+printSummary() = {
+    println("\n=== BERT Complete ===")
+    println("\nFeatures implemented:")
+    println("  - Token embeddings")
+    println("  - Position embeddings")
+    println("  - Token type embeddings (for sentence pairs)")
+    println("  - Multi-head self-attention")
+    println("  - Attention masking (padding)")
+    println("  - Multiple encoder layers")
+    println("  - Layer normalization")
+    println("  - Feed-forward networks")
+    println("  - Pooler with tanh activation")
+    println("  - Classification head")
+}
+
+main() = runBertDemo()

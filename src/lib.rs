@@ -80,6 +80,10 @@ fn register(reg: &mut ExtRegistry) {
     reg.add("Candle.encode", tokenizer_encode);
     reg.add("Candle.decode", tokenizer_decode);
     reg.add("Candle.vocabSize", tokenizer_vocab_size);
+
+    // Attention utilities
+    reg.add("Candle.createAttentionMask", create_attention_mask);
+    reg.add("Candle.applyAttentionMask", apply_attention_mask);
 }
 
 // Type ID for tensors in GcNativeHandle
@@ -731,6 +735,67 @@ fn tokenizer_decode(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> 
 fn tokenizer_vocab_size(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let tokenizer = value_to_tokenizer(&args[0])?;
     Ok(Value::Int(tokenizer.get_vocab_size(true) as i64))
+}
+
+// ==================== Attention Utilities ====================
+
+/// Create attention mask from token IDs (0 = padding, non-0 = valid)
+/// createAttentionMask(tokenIds, padTokenId) -> Tensor [batch, 1, 1, seq]
+/// Values: 0.0 for valid tokens, -inf for padding
+fn create_attention_mask(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let token_ids = value_to_tensor(&args[0])?;
+    let pad_id = args[1].as_i64()? as f32;
+
+    // token_ids: [batch, seq]
+    let token_f32 = token_ids.to_dtype(DType::F32).map_err(|e| e.to_string())?;
+
+    // Create mask: 1.0 where token != pad_id, 0.0 where token == pad_id
+    let pad_tensor = Tensor::new(&[pad_id], &Device::Cpu).map_err(|e| e.to_string())?;
+
+    // We need to compare and create mask
+    // Since Candle doesn't have direct != comparison, we'll use a different approach:
+    // mask = (token_ids != pad_id) as float, then convert to attention mask
+
+    // For attention: 0.0 means attend, -inf means don't attend
+    // So: if token == pad_id, return -inf, else return 0.0
+
+    let batch_size = token_ids.dims()[0];
+    let seq_len = token_ids.dims()[1];
+
+    // Get raw values and create mask
+    let flat = token_ids.flatten_all().map_err(|e| e.to_string())?;
+    let ids: Vec<f32> = if token_ids.dtype() == DType::F32 {
+        flat.to_vec1().map_err(|e| e.to_string())?
+    } else {
+        let ids_i64: Vec<i64> = flat.to_vec1().map_err(|e| e.to_string())?;
+        ids_i64.into_iter().map(|i| i as f32).collect()
+    };
+
+    let mask_values: Vec<f32> = ids.iter()
+        .map(|&id| if id == pad_id { f32::NEG_INFINITY } else { 0.0 })
+        .collect();
+
+    let mask = Tensor::from_slice(&mask_values, &[batch_size, seq_len], &Device::Cpu)
+        .map_err(|e| e.to_string())?;
+
+    // Reshape to [batch, 1, 1, seq] for broadcasting with attention scores
+    let mask = mask.unsqueeze(1).map_err(|e| e.to_string())?;
+    let mask = mask.unsqueeze(1).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(mask))
+}
+
+/// Apply attention mask to attention scores
+/// applyAttentionMask(scores, mask) -> Tensor
+/// scores: [batch, heads, seq, seq]
+/// mask: [batch, 1, 1, seq] (broadcasts over heads and query positions)
+fn apply_attention_mask(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let scores = value_to_tensor(&args[0])?;
+    let mask = value_to_tensor(&args[1])?;
+
+    // Add mask to scores (mask has 0 for valid, -inf for masked)
+    let result = scores.broadcast_add(mask).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
 }
 
 #[cfg(test)]

@@ -225,3 +225,16 @@ pub decode(tokenizer, ids) = __native__("Candle.decode", tokenizer, ids)
 # Get vocabulary size
 # vocabSize(tokenizer) -> Int
 pub vocabSize(tokenizer) = __native__("Candle.vocabSize", tokenizer)
+
+# =============================================================================
+# Attention Utilities
+# =============================================================================
+
+# Create attention mask from token IDs
+# createAttentionMask(tokenIds, padTokenId) -> Tensor [batch, 1, 1, seq]
+# Values: 0.0 for valid tokens, -inf for padding
+pub createAttentionMask(tokenIds, padTokenId) = __native__("Candle.createAttentionMask", tokenIds, padTokenId)
+
+# Apply attention mask to attention scores
+# applyAttentionMask(scores, mask) -> Tensor
+pub applyAttentionMask(scores, mask) = __native__("Candle.applyAttentionMask", scores, mask)
