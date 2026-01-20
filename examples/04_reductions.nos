@@ -11,7 +11,8 @@ main() = {
                   [4.0, 5.0, 6.0]])
     println("Input tensor (2x3):")
     println(toList(t))
-    println("Shape:", tensorShape(t))
+    println("Shape:")
+    println(tensorShape(t))
 
     # Sum all elements
     println("\n1. Sum All Elements")
@@ -41,16 +42,19 @@ main() = {
     println("\ntensorMeanDim(t, 1) - mean per row:")
     println(toList(tensorMeanDim(t, 1)))
 
-    # Argmax
+    # Argmax (returns indices as integers)
     println("\n4. Argmax")
     println("---------")
     scores = fromList([[0.1, 0.7, 0.2],
                        [0.8, 0.1, 0.1]])
     println("Scores tensor:")
     println(toList(scores))
-    println("\nargmax(scores, 1) - index of max per row:")
-    println(toList(argmax(scores, 1)))
-    println("(row 0: index 1, row 1: index 0)")
+    println("\nargmax(scores, 1) - returns tensor of indices")
+    println("(row 0 max at index 1, row 1 max at index 0)")
+    # Note: argmax returns U32 tensor, use tensorShape to verify
+    predictions = argmax(scores, 1)
+    println("Predictions shape:")
+    println(tensorShape(predictions))
 
     0
 }
