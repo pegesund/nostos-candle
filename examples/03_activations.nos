@@ -1,0 +1,53 @@
+# Activation Functions
+# Run: nostos --use candle examples/03_activations.nos
+
+use candle.*
+
+main() = {
+    println("=== Activation Functions ===\n")
+
+    # Input with positive and negative values
+    x = fromList([-2.0, -1.0, 0.0, 1.0, 2.0])
+    println("Input tensor x:")
+    println(toList(x))
+
+    # ReLU: max(0, x)
+    println("\n1. ReLU Activation")
+    println("------------------")
+    println("relu(x) = max(0, x):")
+    println(toList(relu(x)))
+
+    # GELU: Gaussian Error Linear Unit
+    println("\n2. GELU Activation")
+    println("------------------")
+    println("gelu(x):")
+    println(toList(gelu(x)))
+
+    # Exponential
+    println("\n3. Exponential")
+    println("--------------")
+    small = fromList([0.0, 1.0, 2.0])
+    println("Input: [0, 1, 2]")
+    println("tensorExp:")
+    println(toList(tensorExp(small)))
+
+    # Natural Log
+    println("\n4. Natural Logarithm")
+    println("--------------------")
+    positive = fromList([1.0, 2.718, 10.0])
+    println("Input: [1, e, 10]")
+    println("tensorLog:")
+    println(toList(tensorLog(positive)))
+
+    # Softmax
+    println("\n5. Softmax")
+    println("----------")
+    logits = fromList([[1.0, 2.0, 3.0]])
+    println("Input logits: [[1, 2, 3]]")
+    println("softmax(logits, dim=1):")
+    probs = softmax(logits, 1)
+    println(toList(probs))
+    println("(probabilities sum to 1)")
+
+    0
+}

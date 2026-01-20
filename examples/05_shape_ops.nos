@@ -1,0 +1,65 @@
+# Shape Operations
+# Run: nostos --use candle examples/05_shape_ops.nos
+
+use candle.*
+
+main() = {
+    println("=== Shape Operations ===\n")
+
+    # Create a tensor
+    t = fromList([[1.0, 2.0, 3.0],
+                  [4.0, 5.0, 6.0]])
+    println("Original tensor (2x3):")
+    println(toList(t))
+    println("Shape:", tensorShape(t))
+
+    # Reshape
+    println("\n1. Reshape")
+    println("----------")
+    reshaped = reshape(t, [3, 2])
+    println("reshape(t, [3, 2]):")
+    println(toList(reshaped))
+    println("Shape:", tensorShape(reshaped))
+
+    reshaped2 = reshape(t, [6])
+    println("\nreshape(t, [6]) - flatten:")
+    println(toList(reshaped2))
+
+    # Transpose (swap dimensions)
+    println("\n2. Swap Dimensions")
+    println("------------------")
+    transposed = swapDims(t, 0, 1)
+    println("swapDims(t, 0, 1):")
+    println(toList(transposed))
+    println("Shape:", tensorShape(transposed))
+
+    # Unsqueeze - add dimension
+    println("\n3. Unsqueeze (Add Dimension)")
+    println("----------------------------")
+    v = fromList([1.0, 2.0, 3.0])
+    println("Original 1D tensor:")
+    println(toList(v))
+    println("Shape:", tensorShape(v))
+
+    unsq0 = unsqueeze(v, 0)
+    println("\nunsqueeze(v, 0) - add dim at front:")
+    println(toList(unsq0))
+    println("Shape:", tensorShape(unsq0))
+
+    unsq1 = unsqueeze(v, 1)
+    println("\nunsqueeze(v, 1) - add dim at end:")
+    println(toList(unsq1))
+    println("Shape:", tensorShape(unsq1))
+
+    # Squeeze - remove dimension of size 1
+    println("\n4. Squeeze (Remove Dimension)")
+    println("-----------------------------")
+    println("Starting with shape [1, 3]:")
+    println(toList(unsq0))
+    squeezed = squeeze(unsq0, 0)
+    println("\nsqueeze at dim 0:")
+    println(toList(squeezed))
+    println("Shape:", tensorShape(squeezed))
+
+    0
+}

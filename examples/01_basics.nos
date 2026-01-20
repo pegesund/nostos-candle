@@ -1,0 +1,41 @@
+# Basic Tensor Operations
+# Run: nostos --use candle examples/01_basics.nos
+
+use candle.*
+
+main() = {
+    println("=== Basic Tensor Operations ===\n")
+
+    # Creating tensors
+    println("1. Creating Tensors")
+    println("-------------------")
+
+    # Zeros tensor
+    z = zeros([2, 3])
+    println("zeros([2, 3]):")
+    println(toList(z))
+
+    # Ones tensor
+    o = ones([3, 2])
+    println("\nones([3, 2]):")
+    println(toList(o))
+
+    # From nested list
+    data = fromList([[1.0, 2.0, 3.0],
+                     [4.0, 5.0, 6.0]])
+    println("\nfromList([[1,2,3], [4,5,6]]):")
+    println(toList(data))
+
+    # Random tensor
+    r = randn([2, 2])
+    println("\nrandn([2, 2]) - random values:")
+    println(toList(r))
+
+    # Getting shape
+    println("\n2. Tensor Shape")
+    println("---------------")
+    println("Shape of data tensor:")
+    println(tensorShape(data))
+
+    0
+}

@@ -1,0 +1,56 @@
+# Reduction Operations
+# Run: nostos --use candle examples/04_reductions.nos
+
+use candle.*
+
+main() = {
+    println("=== Reduction Operations ===\n")
+
+    # Create a 2D tensor
+    t = fromList([[1.0, 2.0, 3.0],
+                  [4.0, 5.0, 6.0]])
+    println("Input tensor (2x3):")
+    println(toList(t))
+    println("Shape:", tensorShape(t))
+
+    # Sum all elements
+    println("\n1. Sum All Elements")
+    println("-------------------")
+    println("tensorSum(t):")
+    println(toList(tensorSum(t)))
+    println("(1+2+3+4+5+6 = 21)")
+
+    # Sum along dimension
+    println("\n2. Sum Along Dimension")
+    println("----------------------")
+    println("tensorSumDim(t, 0) - sum rows:")
+    println(toList(tensorSumDim(t, 0)))
+    println("([1+4, 2+5, 3+6] = [5, 7, 9])")
+
+    println("\ntensorSumDim(t, 1) - sum columns:")
+    println(toList(tensorSumDim(t, 1)))
+    println("([1+2+3, 4+5+6] = [[6], [15]])")
+
+    # Mean
+    println("\n3. Mean")
+    println("-------")
+    println("tensorMean(t):")
+    println(toList(tensorMean(t)))
+    println("(21/6 = 3.5)")
+
+    println("\ntensorMeanDim(t, 1) - mean per row:")
+    println(toList(tensorMeanDim(t, 1)))
+
+    # Argmax
+    println("\n4. Argmax")
+    println("---------")
+    scores = fromList([[0.1, 0.7, 0.2],
+                       [0.8, 0.1, 0.1]])
+    println("Scores tensor:")
+    println(toList(scores))
+    println("\nargmax(scores, 1) - index of max per row:")
+    println(toList(argmax(scores, 1)))
+    println("(row 0: index 1, row 1: index 0)")
+
+    0
+}

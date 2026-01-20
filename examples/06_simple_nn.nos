@@ -1,0 +1,61 @@
+# Simple Neural Network Forward Pass
+# Run: nostos --use candle examples/06_simple_nn.nos
+
+use candle.*
+
+main() = {
+    println("=== Simple Neural Network Forward Pass ===\n")
+    println("Network: Input(2) -> Hidden(3) -> Output(2)")
+    println("Activation: ReLU for hidden, Softmax for output\n")
+
+    # Input: batch of 2 samples, 2 features each
+    x = fromList([[1.0, 0.5],
+                  [0.2, 0.8]])
+    println("Input (batch_size=2, features=2):")
+    println(toList(x))
+
+    # Layer 1: Linear (2 -> 3)
+    # Weights and biases (normally learned)
+    w1 = fromList([[0.1, 0.2, 0.3],
+                   [0.4, 0.5, 0.6]])  # 2x3
+    b1 = fromList([[0.1, 0.1, 0.1]])  # 1x3 (broadcast)
+
+    println("\n--- Layer 1 (Linear + ReLU) ---")
+    println("W1 shape:", tensorShape(w1))
+
+    # Forward: x @ w1 + b1
+    h1_pre = tensorAdd(matmul(x, w1), b1)
+    println("Pre-activation:")
+    println(toList(h1_pre))
+
+    h1 = relu(h1_pre)
+    println("After ReLU:")
+    println(toList(h1))
+
+    # Layer 2: Linear (3 -> 2)
+    w2 = fromList([[0.2, 0.3],
+                   [0.4, 0.5],
+                   [0.6, 0.7]])  # 3x2
+    b2 = fromList([[0.0, 0.0]])  # 1x2
+
+    println("\n--- Layer 2 (Linear + Softmax) ---")
+    println("W2 shape:", tensorShape(w2))
+
+    # Forward: h1 @ w2 + b2
+    logits = tensorAdd(matmul(h1, w2), b2)
+    println("Logits:")
+    println(toList(logits))
+
+    # Softmax for probabilities
+    probs = softmax(logits, 1)
+    println("Output probabilities:")
+    println(toList(probs))
+
+    # Get predictions
+    println("\n--- Predictions ---")
+    predictions = argmax(probs, 1)
+    println("Predicted classes:")
+    println(toList(predictions))
+
+    0
+}
