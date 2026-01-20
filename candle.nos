@@ -1,0 +1,124 @@
+# Candle - Machine Learning Library for Nostos
+#
+# This module provides tensor operations using the Candle ML framework.
+#
+# Usage:
+#   use candle.*
+#
+#   t = candle.zeros([2, 3])
+#   t2 = candle.ones([2, 3])
+#   sum = candle.add(t, t2)
+
+# =============================================================================
+# Tensor Creation
+# =============================================================================
+
+# Create a tensor filled with zeros
+# zeros([2, 3]) -> Tensor of shape [2, 3]
+pub zeros(shape) = __native__("Candle.zeros", shape)
+
+# Create a tensor filled with ones
+# ones([2, 3]) -> Tensor of shape [2, 3]
+pub ones(shape) = __native__("Candle.ones", shape)
+
+# Create a tensor with random normal values (mean=0, std=1)
+# randn([2, 3]) -> Tensor of shape [2, 3]
+pub randn(shape) = __native__("Candle.randn", shape)
+
+# Create a tensor from a nested list
+# fromList([[1.0, 2.0], [3.0, 4.0]]) -> Tensor of shape [2, 2]
+pub fromList(data) = __native__("Candle.fromList", data)
+
+# =============================================================================
+# Binary Operations
+# =============================================================================
+
+# Element-wise addition
+pub add(a, b) = __native__("Candle.add", a, b)
+
+# Element-wise subtraction
+pub sub(a, b) = __native__("Candle.sub", a, b)
+
+# Element-wise multiplication
+pub mul(a, b) = __native__("Candle.mul", a, b)
+
+# Element-wise division
+pub div(a, b) = __native__("Candle.div", a, b)
+
+# Matrix multiplication
+pub matmul(a, b) = __native__("Candle.matmul", a, b)
+
+# =============================================================================
+# Unary Operations
+# =============================================================================
+
+# Element-wise exponential
+pub exp(t) = __native__("Candle.exp", t)
+
+# Element-wise natural logarithm
+pub log(t) = __native__("Candle.log", t)
+
+# Element-wise ReLU activation
+pub relu(t) = __native__("Candle.relu", t)
+
+# Element-wise GELU activation
+pub gelu(t) = __native__("Candle.gelu", t)
+
+# Softmax along a dimension
+# softmax(t, dim) -> Tensor with softmax applied along dim
+pub softmax(t, dim) = __native__("Candle.softmax", t, dim)
+
+# =============================================================================
+# Shape Operations
+# =============================================================================
+
+# Reshape tensor to new shape
+# reshape(t, [4, 2]) -> Tensor with new shape
+pub reshape(t, newShape) = __native__("Candle.reshape", t, newShape)
+
+# Transpose two dimensions
+# transpose(t, 0, 1) -> Tensor with dims 0 and 1 swapped
+pub transpose(t, dim1, dim2) = __native__("Candle.transpose", t, dim1, dim2)
+
+# Remove dimension of size 1
+# squeeze(t, dim) -> Tensor with dim removed if size is 1
+pub squeeze(t, dim) = __native__("Candle.squeeze", t, dim)
+
+# Add dimension of size 1
+# unsqueeze(t, dim) -> Tensor with new dim of size 1
+pub unsqueeze(t, dim) = __native__("Candle.unsqueeze", t, dim)
+
+# =============================================================================
+# Reductions
+# =============================================================================
+
+# Sum all elements or along a dimension
+# sum(t) -> Scalar tensor with sum of all elements
+# sum(t, dim) -> Tensor with sum along dim
+pub sum(t) = __native__("Candle.sum", t)
+pub sumDim(t, dim) = __native__("Candle.sum", t, dim)
+
+# Mean of all elements or along a dimension
+# mean(t) -> Scalar tensor with mean of all elements
+# mean(t, dim) -> Tensor with mean along dim
+pub mean(t) = __native__("Candle.mean", t)
+pub meanDim(t, dim) = __native__("Candle.mean", t, dim)
+
+# Index of maximum value along a dimension
+# argmax(t, dim) -> Tensor with indices of max values along dim
+pub argmax(t, dim) = __native__("Candle.argmax", t, dim)
+
+# =============================================================================
+# Tensor Info & Conversion
+# =============================================================================
+
+# Get the shape of a tensor as a list
+# shape(t) -> [2, 3]
+pub shape(t) = __native__("Candle.shape", t)
+
+# Convert tensor to nested list
+# toList(t) -> [[1.0, 2.0], [3.0, 4.0]]
+pub toList(t) = __native__("Candle.toList", t)
+
+# Clone a tensor
+pub clone(t) = __native__("Candle.clone", t)

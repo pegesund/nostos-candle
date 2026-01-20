@@ -1,0 +1,86 @@
+# Test file for Candle ML extension - Direct native calls
+# This version calls the native functions directly without the candle.nos wrapper
+
+main() = {
+    println("=== Candle Extension Tests (Direct) ===")
+
+    # Test 1: Create tensors
+    println("\n1. Tensor Creation")
+    t_zeros = __native__("Candle.zeros", [2, 3])
+    println("Created zeros tensor [2, 3]")
+
+    t_ones = __native__("Candle.ones", [2, 3])
+    println("Created ones tensor [2, 3]")
+
+    # Test 2: Check shapes
+    println("\n2. Shape Operations")
+    s = __native__("Candle.shape", t_zeros)
+    println("Shape of zeros tensor:")
+    println(s)
+
+    # Test 3: Tensor from list
+    println("\n3. Tensor from List")
+    t_data = __native__("Candle.fromList", [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    println("Created tensor from list [[1,2,3],[4,5,6]]")
+    data = __native__("Candle.toList", t_data)
+    println("Tensor data:")
+    println(data)
+
+    # Test 4: Binary operations
+    println("\n4. Binary Operations")
+    a = __native__("Candle.ones", [2, 2])
+    b = __native__("Candle.ones", [2, 2])
+    c = __native__("Candle.add", a, b)
+    println("ones + ones =")
+    println(__native__("Candle.toList", c))
+
+    # Test 5: Matrix multiplication
+    println("\n5. Matrix Multiplication")
+    m1 = __native__("Candle.fromList", [[1.0, 2.0], [3.0, 4.0]])
+    m2 = __native__("Candle.fromList", [[5.0, 6.0], [7.0, 8.0]])
+    result = __native__("Candle.matmul", m1, m2)
+    println("[[1,2],[3,4]] @ [[5,6],[7,8]] =")
+    println(__native__("Candle.toList", result))
+
+    # Test 6: Unary operations
+    println("\n6. Unary Operations")
+    t = __native__("Candle.fromList", [1.0, 2.0, 3.0])
+    exp_t = __native__("Candle.exp", t)
+    println("exp([1, 2, 3]) =")
+    println(__native__("Candle.toList", exp_t))
+
+    relu_input = __native__("Candle.fromList", [-1.0, 0.0, 1.0, 2.0])
+    relu_out = __native__("Candle.relu", relu_input)
+    println("relu([-1, 0, 1, 2]) =")
+    println(__native__("Candle.toList", relu_out))
+
+    # Test 7: Reductions
+    println("\n7. Reductions")
+    t_sum = __native__("Candle.fromList", [[1.0, 2.0], [3.0, 4.0]])
+    total = __native__("Candle.sum", t_sum)
+    println("sum([[1,2],[3,4]]) =")
+    println(__native__("Candle.toList", total))
+
+    avg = __native__("Candle.mean", t_sum)
+    println("mean([[1,2],[3,4]]) =")
+    println(__native__("Candle.toList", avg))
+
+    # Test 8: Reshape
+    println("\n8. Reshape")
+    t_orig = __native__("Candle.fromList", [[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+    t_reshaped = __native__("Candle.reshape", t_orig, [3, 2])
+    println("reshape([[1,2,3],[4,5,6]], [3,2]) =")
+    println(__native__("Candle.toList", t_reshaped))
+    println("Shape:")
+    println(__native__("Candle.shape", t_reshaped))
+
+    # Test 9: Softmax
+    println("\n9. Softmax")
+    logits = __native__("Candle.fromList", [[1.0, 2.0, 3.0]])
+    probs = __native__("Candle.softmax", logits, 1)
+    println("softmax([[1, 2, 3]], dim=1) =")
+    println(__native__("Candle.toList", probs))
+
+    println("\n=== All Tests Passed ===")
+    0
+}
