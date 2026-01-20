@@ -205,3 +205,23 @@ pub getTensor(model, name) = __native__("Candle.getTensor", model, name)
 # List all tensor names in a loaded model
 # listTensors(model) -> [String]
 pub listTensors(model) = __native__("Candle.listTensors", model)
+
+# =============================================================================
+# Tokenizer
+# =============================================================================
+
+# Load a tokenizer from a JSON file (tokenizer.json from HuggingFace)
+# loadTokenizer(path) -> Tokenizer
+pub loadTokenizer(path) = __native__("Candle.loadTokenizer", path)
+
+# Encode text to token IDs
+# encode(tokenizer, text) -> [Int]
+pub encode(tokenizer, text) = __native__("Candle.encode", tokenizer, text)
+
+# Decode token IDs back to text
+# decode(tokenizer, ids) -> String
+pub decode(tokenizer, ids) = __native__("Candle.decode", tokenizer, ids)
+
+# Get vocabulary size
+# vocabSize(tokenizer) -> Int
+pub vocabSize(tokenizer) = __native__("Candle.vocabSize", tokenizer)

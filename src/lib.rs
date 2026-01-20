@@ -6,11 +6,15 @@ use candle_core::{DType, Device, Tensor};
 use nostos_extension::*;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokenizers::Tokenizer;
 
 declare_extension!("candle", "0.1.0", register);
 
 // Type ID for tensor maps (loaded safetensors)
 const TENSOR_MAP_TYPE_ID: u64 = 2;
+
+// Type ID for tokenizers
+const TOKENIZER_TYPE_ID: u64 = 3;
 
 fn register(reg: &mut ExtRegistry) {
     // Tensor creation
@@ -70,6 +74,12 @@ fn register(reg: &mut ExtRegistry) {
     reg.add("Candle.loadSafetensors", load_safetensors);
     reg.add("Candle.getTensor", get_tensor_from_map);
     reg.add("Candle.listTensors", list_tensors);
+
+    // Tokenizer
+    reg.add("Candle.loadTokenizer", load_tokenizer);
+    reg.add("Candle.encode", tokenizer_encode);
+    reg.add("Candle.decode", tokenizer_decode);
+    reg.add("Candle.vocabSize", tokenizer_vocab_size);
 }
 
 // Type ID for tensors in GcNativeHandle
@@ -649,6 +659,78 @@ fn list_tensors(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
         .collect();
 
     Ok(Value::List(Arc::new(names)))
+}
+
+// ==================== Tokenizer ====================
+
+// Cleanup function for tokenizers
+fn tokenizer_cleanup(ptr: usize, type_id: u64) {
+    if type_id == TOKENIZER_TYPE_ID && ptr != 0 {
+        unsafe {
+            let _ = Box::from_raw(ptr as *mut Tokenizer);
+        }
+    }
+}
+
+// Helper to extract tokenizer from Value
+fn value_to_tokenizer(v: &Value) -> Result<&Tokenizer, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != TOKENIZER_TYPE_ID {
+        return Err(format!("Expected Tokenizer (type_id={}), got type_id={}", TOKENIZER_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 {
+        return Err("Tokenizer handle is null".to_string());
+    }
+    Ok(unsafe { &*(handle.ptr as *const Tokenizer) })
+}
+
+/// Load a tokenizer from a JSON file: loadTokenizer(path) -> Tokenizer
+fn load_tokenizer(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let path = args[0].as_string()?;
+    let path_str: &str = &path;
+
+    let tokenizer = Tokenizer::from_file(path_str)
+        .map_err(|e| format!("Failed to load tokenizer: {}", e))?;
+
+    Ok(Value::gc_handle(Box::new(tokenizer), TOKENIZER_TYPE_ID, tokenizer_cleanup))
+}
+
+/// Encode text to token IDs: encode(tokenizer, text) -> [Int]
+fn tokenizer_encode(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let tokenizer = value_to_tokenizer(&args[0])?;
+    let text = args[1].as_string()?;
+    let text_str: &str = &text;
+
+    let encoding = tokenizer.encode(text_str, true)
+        .map_err(|e| format!("Encoding failed: {}", e))?;
+
+    let ids: Vec<Value> = encoding.get_ids()
+        .iter()
+        .map(|&id| Value::Int(id as i64))
+        .collect();
+
+    Ok(Value::List(Arc::new(ids)))
+}
+
+/// Decode token IDs back to text: decode(tokenizer, ids) -> String
+fn tokenizer_decode(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let tokenizer = value_to_tokenizer(&args[0])?;
+    let ids_value = args[1].as_list()?;
+
+    let ids: Vec<u32> = ids_value.iter()
+        .map(|v| v.as_i64().map(|i| i as u32))
+        .collect::<Result<_, _>>()?;
+
+    let text = tokenizer.decode(&ids, true)
+        .map_err(|e| format!("Decoding failed: {}", e))?;
+
+    Ok(Value::String(Arc::new(text)))
+}
+
+/// Get vocabulary size: vocabSize(tokenizer) -> Int
+fn tokenizer_vocab_size(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let tokenizer = value_to_tokenizer(&args[0])?;
+    Ok(Value::Int(tokenizer.get_vocab_size(true) as i64))
 }
 
 #[cfg(test)]

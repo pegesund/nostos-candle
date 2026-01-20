@@ -1,0 +1,197 @@
+# BERT-style Encoder Implementation
+# Can load and run actual BERT models from safetensors
+# Run: nostos --use candle examples/10_bert_encoder.nos
+
+use candle.*
+
+# =============================================================================
+# Multi-Head Self-Attention
+# =============================================================================
+
+# Split tensor into multiple heads
+# x: [batch, seq, hidden] -> [batch, num_heads, seq, head_dim]
+splitHeads(x, numHeads) = {
+    shape = tensorShape(x)
+    batch = shape[0]
+    seq = shape[1]
+    hidden = shape[2]
+    headDim = hidden / numHeads
+
+    # Reshape: [batch, seq, num_heads, head_dim]
+    reshaped = reshape(x, [batch, seq, numHeads, headDim])
+    # Transpose to: [batch, num_heads, seq, head_dim]
+    swapDims(reshaped, 1, 2)
+}
+
+# Merge heads back
+# x: [batch, num_heads, seq, head_dim] -> [batch, seq, hidden]
+mergeHeads(x) = {
+    shape = tensorShape(x)
+    batch = shape[0]
+    numHeads = shape[1]
+    seq = shape[2]
+    headDim = shape[3]
+    hidden = numHeads * headDim
+
+    # Transpose to: [batch, seq, num_heads, head_dim]
+    transposed = swapDims(x, 1, 2)
+    # Reshape to: [batch, seq, hidden]
+    reshape(transposed, [batch, seq, hidden])
+}
+
+# Multi-head attention
+# q, k, v: [batch, seq, hidden]
+# Returns: [batch, seq, hidden]
+multiHeadAttention(q, k, v, numHeads, headDimF) = {
+    # Split into heads
+    qHeads = contiguous(splitHeads(q, numHeads))  # [batch, heads, seq, head_dim]
+    kHeads = contiguous(splitHeads(k, numHeads))
+    vHeads = contiguous(splitHeads(v, numHeads))
+
+    # Scaled dot-product attention per head
+    scale = tensorSqrt(fromList([headDimF]))
+
+    # Q @ K.T: [batch, heads, seq, seq]
+    kT = contiguous(swapDims(kHeads, 2, 3))
+    scores = matmul(qHeads, kT)
+    scaledScores = tensorDiv(scores, scale)
+
+    # Softmax over keys (last dim)
+    attnWeights = softmax(scaledScores, 3)
+
+    # Weighted sum: [batch, heads, seq, head_dim]
+    attnOutput = matmul(attnWeights, vHeads)
+
+    # Merge heads back
+    mergeHeads(contiguous(attnOutput))
+}
+
+# =============================================================================
+# BERT Encoder Layer
+# =============================================================================
+
+# Single BERT encoder layer
+bertEncoderLayer(x, wQ, wK, wV, wO, ln1G, ln1B, wFF1, bFF1, wFF2, bFF2, ln2G, ln2B, numHeads, headDimF) = {
+    # Self-attention
+    q = linear(x, wQ)
+    k = linear(x, wK)
+    v = linear(x, wV)
+
+    attnRaw = multiHeadAttention(q, k, v, numHeads, headDimF)
+    attnOut = linear(attnRaw, wO)
+
+    # Residual + LayerNorm
+    hidden1 = layerNorm(tensorAdd(x, attnOut), ln1G, ln1B)
+
+    # Feed-forward
+    ffHidden = linearBias(hidden1, wFF1, bFF1)
+    ffAct = gelu(ffHidden)
+    ffOut = linearBias(ffAct, wFF2, bFF2)
+
+    # Residual + LayerNorm
+    layerNorm(tensorAdd(hidden1, ffOut), ln2G, ln2B)
+}
+
+# =============================================================================
+# Demo with random weights
+# =============================================================================
+
+main() = {
+    println("=== BERT Encoder Demo ===\n")
+
+    # Configuration (BERT-tiny for demo)
+    batchSize = 2
+    seqLen = 8
+    hiddenSize = 64
+    numHeads = 4
+    headDim = hiddenSize / numHeads  # 16
+    headDimF = 16.0
+    intermediateSize = 256
+    vocabSize = 1000
+
+    println("Config: hidden=64, heads=4, head_dim=16, intermediate=256\n")
+
+    # Create random weights (in real usage, load from safetensors)
+    println("Creating random BERT weights...")
+
+    # Embeddings
+    wordEmb = randn([vocabSize, hiddenSize])
+    posEmb = randn([seqLen, hiddenSize])
+
+    # Attention weights
+    wQ = randn([hiddenSize, hiddenSize])
+    wK = randn([hiddenSize, hiddenSize])
+    wV = randn([hiddenSize, hiddenSize])
+    wO = randn([hiddenSize, hiddenSize])
+
+    # LayerNorm 1
+    ln1G = ones([hiddenSize])
+    ln1B = zeros([hiddenSize])
+
+    # Feed-forward
+    wFF1 = randn([intermediateSize, hiddenSize])
+    bFF1 = zeros([intermediateSize])
+    wFF2 = randn([hiddenSize, intermediateSize])
+    bFF2 = zeros([hiddenSize])
+
+    # LayerNorm 2
+    ln2G = ones([hiddenSize])
+    ln2B = zeros([hiddenSize])
+
+    println("Weights created.\n")
+
+    # Input token IDs
+    tokenIds = fromList([[1, 5, 10, 15, 20, 25, 2, 0],
+                         [1, 8, 12, 3, 0, 0, 0, 0]])
+    println("Input token IDs:")
+    println(toList(tokenIds))
+    println("")
+
+    # Embedding lookup
+    println("1. Token + Position Embeddings")
+    tokEmb = embedding(tokenIds, wordEmb)
+    println("   Token embeddings shape:")
+    println(tensorShape(tokEmb))
+
+    # Add position embeddings (broadcast over batch)
+    posEmbExpanded = unsqueeze(posEmb, 0)  # [1, seq, hidden]
+    x = tensorAdd(tokEmb, posEmbExpanded)
+    println("   After position add:")
+    println(tensorShape(x))
+
+    # Run encoder layer
+    println("\n2. BERT Encoder Layer")
+    println("   Running self-attention + FFN...")
+    output = bertEncoderLayer(x, wQ, wK, wV, wO, ln1G, ln1B, wFF1, bFF1, wFF2, bFF2, ln2G, ln2B, numHeads, headDimF)
+    println("   Output shape:")
+    println(tensorShape(output))
+
+    # Pooling (CLS token)
+    println("\n3. CLS Pooling")
+    clsOutput = narrow(output, 1, 0, 1)
+    pooled = squeeze(clsOutput, 1)
+    println("   Pooled shape:")
+    println(tensorShape(pooled))
+
+    # Classification
+    println("\n4. Classification (3 classes)")
+    classifierW = randn([3, hiddenSize])
+    classifierB = zeros([3])
+    logits = linearBias(pooled, classifierW, classifierB)
+    probs = softmax(logits, 1)
+    println("   Probabilities:")
+    println(toList(probs))
+
+    predictions = argmax(probs, 1)
+    println("   Predictions:")
+    println(toList(predictions))
+
+    println("\n=== BERT Demo Complete ===")
+    println("\nTo use real BERT weights:")
+    println("1. Download model.safetensors from HuggingFace")
+    println("2. model = loadSafetensors(\"model.safetensors\")")
+    println("3. wQ = getTensor(model, \"encoder.layer.0.attention.self.query.weight\")")
+    println("4. etc.")
+
+    0
+}
