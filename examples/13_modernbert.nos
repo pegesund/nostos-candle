@@ -144,6 +144,215 @@ loadLayer2(model) = {
     ]
 }
 
+loadLayer3(model) = {
+    [
+        getTensor(model, "model.layers.3.attn_norm.weight"),
+        getTensor(model, "model.layers.3.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.3.attn.Wo.weight"),
+        getTensor(model, "model.layers.3.mlp_norm.weight"),
+        getTensor(model, "model.layers.3.mlp.Wi.weight"),
+        getTensor(model, "model.layers.3.mlp.Wo.weight")
+    ]
+}
+
+loadLayer4(model) = {
+    [
+        getTensor(model, "model.layers.4.attn_norm.weight"),
+        getTensor(model, "model.layers.4.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.4.attn.Wo.weight"),
+        getTensor(model, "model.layers.4.mlp_norm.weight"),
+        getTensor(model, "model.layers.4.mlp.Wi.weight"),
+        getTensor(model, "model.layers.4.mlp.Wo.weight")
+    ]
+}
+
+loadLayer5(model) = {
+    [
+        getTensor(model, "model.layers.5.attn_norm.weight"),
+        getTensor(model, "model.layers.5.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.5.attn.Wo.weight"),
+        getTensor(model, "model.layers.5.mlp_norm.weight"),
+        getTensor(model, "model.layers.5.mlp.Wi.weight"),
+        getTensor(model, "model.layers.5.mlp.Wo.weight")
+    ]
+}
+
+loadLayer6(model) = {
+    [
+        getTensor(model, "model.layers.6.attn_norm.weight"),
+        getTensor(model, "model.layers.6.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.6.attn.Wo.weight"),
+        getTensor(model, "model.layers.6.mlp_norm.weight"),
+        getTensor(model, "model.layers.6.mlp.Wi.weight"),
+        getTensor(model, "model.layers.6.mlp.Wo.weight")
+    ]
+}
+
+loadLayer7(model) = {
+    [
+        getTensor(model, "model.layers.7.attn_norm.weight"),
+        getTensor(model, "model.layers.7.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.7.attn.Wo.weight"),
+        getTensor(model, "model.layers.7.mlp_norm.weight"),
+        getTensor(model, "model.layers.7.mlp.Wi.weight"),
+        getTensor(model, "model.layers.7.mlp.Wo.weight")
+    ]
+}
+
+loadLayer8(model) = {
+    [
+        getTensor(model, "model.layers.8.attn_norm.weight"),
+        getTensor(model, "model.layers.8.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.8.attn.Wo.weight"),
+        getTensor(model, "model.layers.8.mlp_norm.weight"),
+        getTensor(model, "model.layers.8.mlp.Wi.weight"),
+        getTensor(model, "model.layers.8.mlp.Wo.weight")
+    ]
+}
+
+loadLayer9(model) = {
+    [
+        getTensor(model, "model.layers.9.attn_norm.weight"),
+        getTensor(model, "model.layers.9.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.9.attn.Wo.weight"),
+        getTensor(model, "model.layers.9.mlp_norm.weight"),
+        getTensor(model, "model.layers.9.mlp.Wi.weight"),
+        getTensor(model, "model.layers.9.mlp.Wo.weight")
+    ]
+}
+
+loadLayer10(model) = {
+    [
+        getTensor(model, "model.layers.10.attn_norm.weight"),
+        getTensor(model, "model.layers.10.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.10.attn.Wo.weight"),
+        getTensor(model, "model.layers.10.mlp_norm.weight"),
+        getTensor(model, "model.layers.10.mlp.Wi.weight"),
+        getTensor(model, "model.layers.10.mlp.Wo.weight")
+    ]
+}
+
+loadLayer11(model) = {
+    [
+        getTensor(model, "model.layers.11.attn_norm.weight"),
+        getTensor(model, "model.layers.11.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.11.attn.Wo.weight"),
+        getTensor(model, "model.layers.11.mlp_norm.weight"),
+        getTensor(model, "model.layers.11.mlp.Wi.weight"),
+        getTensor(model, "model.layers.11.mlp.Wo.weight")
+    ]
+}
+
+loadLayer12(model) = {
+    [
+        getTensor(model, "model.layers.12.attn_norm.weight"),
+        getTensor(model, "model.layers.12.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.12.attn.Wo.weight"),
+        getTensor(model, "model.layers.12.mlp_norm.weight"),
+        getTensor(model, "model.layers.12.mlp.Wi.weight"),
+        getTensor(model, "model.layers.12.mlp.Wo.weight")
+    ]
+}
+
+loadLayer13(model) = {
+    [
+        getTensor(model, "model.layers.13.attn_norm.weight"),
+        getTensor(model, "model.layers.13.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.13.attn.Wo.weight"),
+        getTensor(model, "model.layers.13.mlp_norm.weight"),
+        getTensor(model, "model.layers.13.mlp.Wi.weight"),
+        getTensor(model, "model.layers.13.mlp.Wo.weight")
+    ]
+}
+
+loadLayer14(model) = {
+    [
+        getTensor(model, "model.layers.14.attn_norm.weight"),
+        getTensor(model, "model.layers.14.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.14.attn.Wo.weight"),
+        getTensor(model, "model.layers.14.mlp_norm.weight"),
+        getTensor(model, "model.layers.14.mlp.Wi.weight"),
+        getTensor(model, "model.layers.14.mlp.Wo.weight")
+    ]
+}
+
+loadLayer15(model) = {
+    [
+        getTensor(model, "model.layers.15.attn_norm.weight"),
+        getTensor(model, "model.layers.15.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.15.attn.Wo.weight"),
+        getTensor(model, "model.layers.15.mlp_norm.weight"),
+        getTensor(model, "model.layers.15.mlp.Wi.weight"),
+        getTensor(model, "model.layers.15.mlp.Wo.weight")
+    ]
+}
+
+loadLayer16(model) = {
+    [
+        getTensor(model, "model.layers.16.attn_norm.weight"),
+        getTensor(model, "model.layers.16.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.16.attn.Wo.weight"),
+        getTensor(model, "model.layers.16.mlp_norm.weight"),
+        getTensor(model, "model.layers.16.mlp.Wi.weight"),
+        getTensor(model, "model.layers.16.mlp.Wo.weight")
+    ]
+}
+
+loadLayer17(model) = {
+    [
+        getTensor(model, "model.layers.17.attn_norm.weight"),
+        getTensor(model, "model.layers.17.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.17.attn.Wo.weight"),
+        getTensor(model, "model.layers.17.mlp_norm.weight"),
+        getTensor(model, "model.layers.17.mlp.Wi.weight"),
+        getTensor(model, "model.layers.17.mlp.Wo.weight")
+    ]
+}
+
+loadLayer18(model) = {
+    [
+        getTensor(model, "model.layers.18.attn_norm.weight"),
+        getTensor(model, "model.layers.18.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.18.attn.Wo.weight"),
+        getTensor(model, "model.layers.18.mlp_norm.weight"),
+        getTensor(model, "model.layers.18.mlp.Wi.weight"),
+        getTensor(model, "model.layers.18.mlp.Wo.weight")
+    ]
+}
+
+loadLayer19(model) = {
+    [
+        getTensor(model, "model.layers.19.attn_norm.weight"),
+        getTensor(model, "model.layers.19.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.19.attn.Wo.weight"),
+        getTensor(model, "model.layers.19.mlp_norm.weight"),
+        getTensor(model, "model.layers.19.mlp.Wi.weight"),
+        getTensor(model, "model.layers.19.mlp.Wo.weight")
+    ]
+}
+
+loadLayer20(model) = {
+    [
+        getTensor(model, "model.layers.20.attn_norm.weight"),
+        getTensor(model, "model.layers.20.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.20.attn.Wo.weight"),
+        getTensor(model, "model.layers.20.mlp_norm.weight"),
+        getTensor(model, "model.layers.20.mlp.Wi.weight"),
+        getTensor(model, "model.layers.20.mlp.Wo.weight")
+    ]
+}
+
+loadLayer21(model) = {
+    [
+        getTensor(model, "model.layers.21.attn_norm.weight"),
+        getTensor(model, "model.layers.21.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.21.attn.Wo.weight"),
+        getTensor(model, "model.layers.21.mlp_norm.weight"),
+        getTensor(model, "model.layers.21.mlp.Wi.weight"),
+        getTensor(model, "model.layers.21.mlp.Wo.weight")
+    ]
+}
+
 # =============================================================================
 # Forward Pass Helpers
 # =============================================================================
@@ -188,17 +397,211 @@ runLayer1(x, model, cosLocal, sinLocal) = {
 runLayer2(x, model, cosLocal, sinLocal) = {
     weights = loadLayer2(model)
     result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
-    println("\n5. After Layer 2 (local attention)")
+    println("\n5. After Layer 2 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+# Layer 3 uses GLOBAL attention (every 3rd layer: 0, 3, 6, 9, 12, 15, 18, 21)
+runLayer3(x, model, cosGlobal, sinGlobal) = {
+    weights = loadLayer3(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosGlobal, sinGlobal, 12, 64.0, 768)
+    println("\n6. After Layer 3 (global)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer4(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer4(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n7. After Layer 4 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer5(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer5(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n8. After Layer 5 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer6(x, model, cosGlobal, sinGlobal) = {
+    weights = loadLayer6(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosGlobal, sinGlobal, 12, 64.0, 768)
+    println("\n9. After Layer 6 (global)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer7(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer7(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n10. After Layer 7 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer8(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer8(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n11. After Layer 8 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer9(x, model, cosGlobal, sinGlobal) = {
+    weights = loadLayer9(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosGlobal, sinGlobal, 12, 64.0, 768)
+    println("\n12. After Layer 9 (global)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer10(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer10(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n13. After Layer 10 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer11(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer11(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n14. After Layer 11 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer12(x, model, cosGlobal, sinGlobal) = {
+    weights = loadLayer12(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosGlobal, sinGlobal, 12, 64.0, 768)
+    println("\n15. After Layer 12 (global)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer13(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer13(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n16. After Layer 13 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer14(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer14(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n17. After Layer 14 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer15(x, model, cosGlobal, sinGlobal) = {
+    weights = loadLayer15(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosGlobal, sinGlobal, 12, 64.0, 768)
+    println("\n18. After Layer 15 (global)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer16(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer16(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n19. After Layer 16 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer17(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer17(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n20. After Layer 17 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer18(x, model, cosGlobal, sinGlobal) = {
+    weights = loadLayer18(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosGlobal, sinGlobal, 12, 64.0, 768)
+    println("\n21. After Layer 18 (global)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer19(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer19(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n22. After Layer 19 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer20(x, model, cosLocal, sinLocal) = {
+    weights = loadLayer20(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosLocal, sinLocal, 12, 64.0, 768)
+    println("\n23. After Layer 20 (local)")
+    printFirst5CLS(result, "")
+    result
+}
+
+runLayer21(x, model, cosGlobal, sinGlobal) = {
+    weights = loadLayer21(model)
+    result = modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cosGlobal, sinGlobal, 12, 64.0, 768)
+    println("\n24. After Layer 21 (global) - FINAL")
     printFirst5CLS(result, "")
     result
 }
 
 # =============================================================================
-# Main
+# Main - Split into helper functions to avoid register limit
 # =============================================================================
 
+runLayers0to5(x, model, cosGlobal, sinGlobal, cosLocal, sinLocal) = {
+    h0 = runLayer0(x, model, cosGlobal, sinGlobal)
+    h1 = runLayer1(h0, model, cosLocal, sinLocal)
+    h2 = runLayer2(h1, model, cosLocal, sinLocal)
+    h3 = runLayer3(h2, model, cosGlobal, sinGlobal)
+    h4 = runLayer4(h3, model, cosLocal, sinLocal)
+    runLayer5(h4, model, cosLocal, sinLocal)
+}
+
+runLayers6to11(x, model, cosGlobal, sinGlobal, cosLocal, sinLocal) = {
+    h6 = runLayer6(x, model, cosGlobal, sinGlobal)
+    h7 = runLayer7(h6, model, cosLocal, sinLocal)
+    h8 = runLayer8(h7, model, cosLocal, sinLocal)
+    h9 = runLayer9(h8, model, cosGlobal, sinGlobal)
+    h10 = runLayer10(h9, model, cosLocal, sinLocal)
+    runLayer11(h10, model, cosLocal, sinLocal)
+}
+
+runLayers12to17(x, model, cosGlobal, sinGlobal, cosLocal, sinLocal) = {
+    h12 = runLayer12(x, model, cosGlobal, sinGlobal)
+    h13 = runLayer13(h12, model, cosLocal, sinLocal)
+    h14 = runLayer14(h13, model, cosLocal, sinLocal)
+    h15 = runLayer15(h14, model, cosGlobal, sinGlobal)
+    h16 = runLayer16(h15, model, cosLocal, sinLocal)
+    runLayer17(h16, model, cosLocal, sinLocal)
+}
+
+runLayers18to21(x, model, cosGlobal, sinGlobal, cosLocal, sinLocal) = {
+    h18 = runLayer18(x, model, cosGlobal, sinGlobal)
+    h19 = runLayer19(h18, model, cosLocal, sinLocal)
+    h20 = runLayer20(h19, model, cosLocal, sinLocal)
+    runLayer21(h20, model, cosGlobal, sinGlobal)
+}
+
+runAllLayers(x, model, cosGlobal, sinGlobal, cosLocal, sinLocal) = {
+    h5 = runLayers0to5(x, model, cosGlobal, sinGlobal, cosLocal, sinLocal)
+    h11 = runLayers6to11(h5, model, cosGlobal, sinGlobal, cosLocal, sinLocal)
+    h17 = runLayers12to17(h11, model, cosGlobal, sinGlobal, cosLocal, sinLocal)
+    runLayers18to21(h17, model, cosGlobal, sinGlobal, cosLocal, sinLocal)
+}
+
 main() = {
-    println("=== ModernBERT Implementation ===")
+    println("=== ModernBERT Full Implementation (22 Layers) ===")
     println("Model: answerdotai/ModernBERT-base\n")
 
     # Tokenize
@@ -226,18 +629,16 @@ main() = {
     println("RoPE computed!\n")
 
     # Forward pass
-    println("--- Forward Pass ---\n")
+    println("--- Forward Pass (All 22 Layers) ---\n")
 
     # Embeddings
     embNormed = runEmbeddings(tokenTensor, model)
 
-    # Layers
-    h0 = runLayer0(embNormed, model, ropeGlobal[0], ropeGlobal[1])
-    h1 = runLayer1(h0, model, ropeLocal[0], ropeLocal[1])
-    h2 = runLayer2(h1, model, ropeLocal[0], ropeLocal[1])
+    # All 22 layers
+    finalOutput = runAllLayers(embNormed, model, ropeGlobal[0], ropeGlobal[1], ropeLocal[0], ropeLocal[1])
 
-    println("\n=== ModernBERT Partial Implementation Complete ===")
-    println("(Running first 3 layers for verification)")
+    println("\n=== ModernBERT Full Implementation Complete ===")
+    println("Successfully ran all 22 layers!")
 
     0
 }

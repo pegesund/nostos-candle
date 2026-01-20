@@ -68,10 +68,10 @@ def main():
                 intermediates[name] = output.detach()
         return hook
 
-    # Register hooks
+    # Register hooks for ALL 22 layers
     model.embeddings.register_forward_hook(make_hook('embeddings'))
     model.embeddings.norm.register_forward_hook(make_hook('emb_norm'))
-    for i in range(min(3, len(model.layers))):  # First 3 layers
+    for i in range(len(model.layers)):  # All 22 layers
         model.layers[i].register_forward_hook(make_hook(f'layer_{i}'))
     model.final_norm.register_forward_hook(make_hook('final_norm'))
 
@@ -91,25 +91,19 @@ def main():
     print(f"   Shape: {list(emb_normed.shape)}")
     print(f"   First 5 values of CLS: {emb_normed[0, 0, :5].tolist()}")
 
-    print("\n3. After Layer 0")
-    layer0_out = intermediates.get('layer_0')
-    if layer0_out is not None:
-        print(f"   Shape: {list(layer0_out.shape)}")
-        print(f"   First 5 values of CLS: {layer0_out[0, 0, :5].tolist()}")
+    # Print all 22 layers
+    # Global attention at layers: 0, 3, 6, 9, 12, 15, 18, 21
+    global_layers = {0, 3, 6, 9, 12, 15, 18, 21}
+    for i in range(22):
+        attn_type = "global" if i in global_layers else "local"
+        print(f"\n{i+3}. After Layer {i} ({attn_type})")
+        layer_out = intermediates.get(f'layer_{i}')
+        if layer_out is not None:
+            print(f"   First 5 values of CLS: {layer_out[0, 0, :5].tolist()}")
+        else:
+            print(f"   (not captured)")
 
-    print("\n4. After Layer 1")
-    layer1_out = intermediates.get('layer_1')
-    if layer1_out is not None:
-        print(f"   Shape: {list(layer1_out.shape)}")
-        print(f"   First 5 values of CLS: {layer1_out[0, 0, :5].tolist()}")
-
-    print("\n5. After Layer 2")
-    layer2_out = intermediates.get('layer_2')
-    if layer2_out is not None:
-        print(f"   Shape: {list(layer2_out.shape)}")
-        print(f"   First 5 values of CLS: {layer2_out[0, 0, :5].tolist()}")
-
-    print("\n6. Final Output (after final_norm)")
+    print("\n25. Final Output (after final_norm)")
     print(f"   Shape: {list(outputs.last_hidden_state.shape)}")
     print(f"   First 10 values of CLS:")
     print(f"   {outputs.last_hidden_state[0, 0, :10].tolist()}")
