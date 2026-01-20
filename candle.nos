@@ -85,6 +85,12 @@ pub relu(t) = __native__("Candle.relu", t)
 # Element-wise GELU activation
 pub gelu(t) = __native__("Candle.gelu", t)
 
+# Element-wise cosine
+pub tensorCos(t) = __native__("Candle.cos", t)
+
+# Element-wise sine
+pub tensorSin(t) = __native__("Candle.sin", t)
+
 # Softmax along a dimension
 # softmax(t, dim) -> Tensor with softmax applied along dim
 pub softmax(t, dim) = __native__("Candle.softmax", t, dim)
@@ -243,3 +249,41 @@ pub createAttentionMask(tokenIds, padTokenId) = __native__("Candle.createAttenti
 # Apply attention mask to attention scores
 # applyAttentionMask(scores, mask) -> Tensor
 pub applyAttentionMask(scores, mask) = __native__("Candle.applyAttentionMask", scores, mask)
+
+# =============================================================================
+# ModernBERT Operations
+# =============================================================================
+
+# Apply Rotary Position Embeddings (RoPE)
+# applyRope(x, cos, sin) -> Tensor
+# x: [batch, seq, heads, head_dim] or [batch, heads, seq, head_dim]
+# cos, sin: [seq, head_dim] precomputed frequencies
+pub applyRope(x, cos, sin) = __native__("Candle.applyRope", x, cos, sin)
+
+# GeGLU activation for MLP
+# geglu(gate, up) -> GELU(gate) * up
+# Used in ModernBERT: output = GELU(x @ W_gate) * (x @ W_up)
+pub geglu(gate, up) = __native__("Candle.geglu", gate, up)
+
+# RMS Normalization (alternative to LayerNorm)
+# rmsNorm(x, weight) -> Tensor
+# rmsNorm(x, weight, eps) -> With custom epsilon
+pub rmsNorm(x, weight) = __native__("Candle.rmsNorm", x, weight)
+pub rmsNormEps(x, weight, eps) = __native__("Candle.rmsNorm", x, weight, eps)
+
+# Create local attention mask (sliding window)
+# localAttentionMask(seqLen, windowSize) -> Tensor [1, 1, seq, seq]
+# Returns 0.0 within window, -inf outside window
+pub localAttentionMask(seqLen, windowSize) = __native__("Candle.localAttentionMask", seqLen, windowSize)
+
+# Cast tensor to different dtype
+# cast(tensor, "f32") -> Tensor
+pub cast(t, dtype) = __native__("Candle.cast", t, dtype)
+
+# SiLU activation (Swish): x * sigmoid(x)
+pub silu(t) = __native__("Candle.silu", t)
+
+# Compute RoPE frequencies
+# ropeFreqs(seqLen, headDim, theta) -> [cos, sin]
+# Returns list of two tensors: cos and sin, each of shape [seqLen, headDim]
+pub ropeFreqs(seqLen, headDim, theta) = __native__("Candle.ropeFreqs", seqLen, headDim, theta)

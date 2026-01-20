@@ -42,6 +42,8 @@ fn register(reg: &mut ExtRegistry) {
     reg.add("Candle.gelu", tensor_gelu);
     reg.add("Candle.softmax", tensor_softmax);
     reg.add("Candle.neg", tensor_neg);
+    reg.add("Candle.cos", tensor_cos);
+    reg.add("Candle.sin", tensor_sin);
 
     // Shape operations
     reg.add("Candle.reshape", tensor_reshape);
@@ -85,6 +87,15 @@ fn register(reg: &mut ExtRegistry) {
     // Attention utilities
     reg.add("Candle.createAttentionMask", create_attention_mask);
     reg.add("Candle.applyAttentionMask", apply_attention_mask);
+
+    // ModernBERT operations
+    reg.add("Candle.applyRope", apply_rope);
+    reg.add("Candle.geglu", geglu);
+    reg.add("Candle.rmsNorm", rms_norm);
+    reg.add("Candle.localAttentionMask", local_attention_mask);
+    reg.add("Candle.cast", tensor_cast);
+    reg.add("Candle.silu", tensor_silu);
+    reg.add("Candle.ropeFreqs", rope_frequencies);
 }
 
 // Type ID for tensors in GcNativeHandle
@@ -347,6 +358,18 @@ fn tensor_tanh(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
 fn tensor_neg(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let t = value_to_tensor(&args[0])?;
     let result = t.neg().map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+fn tensor_cos(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = t.cos().map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+fn tensor_sin(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = t.sin().map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
@@ -854,6 +877,189 @@ fn apply_attention_mask(args: &[Value], _ctx: &ExtContext) -> Result<Value, Stri
     // Add mask to scores (mask has 0 for valid, -inf for masked)
     let result = scores.broadcast_add(mask).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
+}
+
+// ==================== ModernBERT Operations ====================
+
+/// Apply Rotary Position Embeddings (RoPE)
+/// applyRope(x, cos, sin) -> Tensor
+/// x: [batch, seq, heads, head_dim] or [batch, heads, seq, head_dim]
+/// cos, sin: [seq, head_dim] precomputed
+fn apply_rope(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let x = value_to_tensor(&args[0])?;
+    let cos = value_to_tensor(&args[1])?;
+    let sin = value_to_tensor(&args[2])?;
+
+    let dims = x.dims();
+    let head_dim = dims[dims.len() - 1];
+    let half_dim = head_dim / 2;
+
+    // Split x into two halves: x1, x2
+    let x1 = x.narrow(dims.len() - 1, 0, half_dim).map_err(|e| e.to_string())?;
+    let x2 = x.narrow(dims.len() - 1, half_dim, half_dim).map_err(|e| e.to_string())?;
+
+    // cos and sin need to be broadcast to match x shape
+    // They come as [seq, head_dim], need to split to [seq, half_dim]
+    let cos_half = cos.narrow(1, 0, half_dim).map_err(|e| e.to_string())?;
+    let sin_half = sin.narrow(1, 0, half_dim).map_err(|e| e.to_string())?;
+
+    // Apply rotation: (x1*cos - x2*sin, x1*sin + x2*cos)
+    let rot_x1 = x1.broadcast_mul(&cos_half).map_err(|e| e.to_string())?
+        .broadcast_sub(&x2.broadcast_mul(&sin_half).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    let rot_x2 = x1.broadcast_mul(&sin_half).map_err(|e| e.to_string())?
+        .broadcast_add(&x2.broadcast_mul(&cos_half).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    // Concatenate back
+    let result = Tensor::cat(&[&rot_x1, &rot_x2], dims.len() - 1)
+        .map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(result))
+}
+
+/// GeGLU activation: geglu(gate, up) -> GELU(gate) * up
+/// Used in ModernBERT MLP: output = GELU(x @ W_gate) * (x @ W_up)
+fn geglu(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let gate = value_to_tensor(&args[0])?;
+    let up = value_to_tensor(&args[1])?;
+
+    // Apply GELU to gate, then multiply with up
+    let gate_act = gate.gelu_erf().map_err(|e| e.to_string())?;
+    let result = gate_act.broadcast_mul(up).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(result))
+}
+
+/// RMS Normalization (used in some transformer variants)
+/// rmsNorm(x, weight, eps) -> Tensor
+fn rms_norm(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let x = value_to_tensor(&args[0])?;
+    let weight = value_to_tensor(&args[1])?;
+    let eps = if args.len() > 2 {
+        args[2].as_f64()? as f32
+    } else {
+        1e-5
+    };
+
+    let last_dim = x.dims().len() - 1;
+
+    // RMS = sqrt(mean(x^2))
+    let x_sq = x.sqr().map_err(|e| e.to_string())?;
+    let mean_sq = x_sq.mean_keepdim(last_dim).map_err(|e| e.to_string())?;
+
+    let eps_tensor = Tensor::new(&[eps], &Device::Cpu).map_err(|e| e.to_string())?;
+    let rms = mean_sq.broadcast_add(&eps_tensor).map_err(|e| e.to_string())?
+        .sqrt().map_err(|e| e.to_string())?;
+
+    // Normalize and scale
+    let normalized = x.broadcast_div(&rms).map_err(|e| e.to_string())?;
+    let result = normalized.broadcast_mul(weight).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(result))
+}
+
+/// Create local attention mask (sliding window)
+/// localAttentionMask(seqLen, windowSize) -> Tensor [1, 1, seq, seq]
+/// Returns 0.0 within window, -inf outside window
+fn local_attention_mask(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let seq_len = args[0].as_i64()? as usize;
+    let window_size = args[1].as_i64()? as usize;
+    let half_window = window_size / 2;
+
+    let mut mask_data = Vec::with_capacity(seq_len * seq_len);
+
+    for i in 0..seq_len {
+        for j in 0..seq_len {
+            let dist = if i >= j { i - j } else { j - i };
+            if dist <= half_window {
+                mask_data.push(0.0f32);
+            } else {
+                mask_data.push(f32::NEG_INFINITY);
+            }
+        }
+    }
+
+    let mask = Tensor::from_slice(&mask_data, &[1, 1, seq_len, seq_len], &Device::Cpu)
+        .map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(mask))
+}
+
+/// Cast tensor to different dtype: cast(tensor, "f32") -> Tensor
+fn tensor_cast(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let dtype_str = args[1].as_string()?;
+    let dtype_ref: &str = &dtype_str;
+
+    let dtype = match dtype_ref {
+        "f32" => DType::F32,
+        "f64" => DType::F64,
+        "i64" => DType::I64,
+        "u32" => DType::U32,
+        "u8" => DType::U8,
+        "bf16" => DType::BF16,
+        "f16" => DType::F16,
+        _ => return Err(format!("Unknown dtype: {}", dtype_str)),
+    };
+
+    let result = t.to_dtype(dtype).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// SiLU activation (Swish): silu(x) -> x * sigmoid(x)
+fn tensor_silu(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = candle_nn::ops::silu(t).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Compute RoPE frequencies: ropeFreqs(seqLen, headDim, theta) -> [cos, sin]
+/// Returns list of two tensors: cos and sin, each of shape [seqLen, headDim]
+fn rope_frequencies(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let seq_len = args[0].as_i64()? as usize;
+    let head_dim = args[1].as_i64()? as usize;
+    let theta = args[2].as_f64()? as f32;
+
+    let half_dim = head_dim / 2;
+
+    // Compute inverse frequencies: 1 / (theta^(2i/dim)) for i in 0..half_dim
+    let inv_freq: Vec<f32> = (0..half_dim)
+        .map(|i| {
+            let exp = (2 * i) as f32 / head_dim as f32;
+            1.0 / theta.powf(exp)
+        })
+        .collect();
+
+    // Compute angles for each position: positions * inv_freq
+    let mut cos_data = Vec::with_capacity(seq_len * head_dim);
+    let mut sin_data = Vec::with_capacity(seq_len * head_dim);
+
+    for pos in 0..seq_len {
+        let pos_f = pos as f32;
+        for &freq in &inv_freq {
+            let angle = pos_f * freq;
+            cos_data.push(angle.cos());
+            sin_data.push(angle.sin());
+        }
+        // Duplicate for second half (interleaved RoPE pattern)
+        for &freq in &inv_freq {
+            let angle = pos_f * freq;
+            cos_data.push(angle.cos());
+            sin_data.push(angle.sin());
+        }
+    }
+
+    let cos = Tensor::from_slice(&cos_data, &[seq_len, head_dim], &Device::Cpu)
+        .map_err(|e| e.to_string())?;
+    let sin = Tensor::from_slice(&sin_data, &[seq_len, head_dim], &Device::Cpu)
+        .map_err(|e| e.to_string())?;
+
+    Ok(Value::list(vec![
+        tensor_to_value(cos),
+        tensor_to_value(sin),
+    ]))
 }
 
 #[cfg(test)]
