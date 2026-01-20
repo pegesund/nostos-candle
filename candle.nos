@@ -5,9 +5,9 @@
 # Usage:
 #   use candle.*
 #
-#   t = candle.zeros([2, 3])
-#   t2 = candle.ones([2, 3])
-#   sum = candle.add(t, t2)
+#   t = zeros([2, 3])
+#   t2 = ones([2, 3])
+#   result = tensorAdd(t, t2)
 
 # =============================================================================
 # Tensor Creation
@@ -34,16 +34,16 @@ pub fromList(data) = __native__("Candle.fromList", data)
 # =============================================================================
 
 # Element-wise addition
-pub add(a, b) = __native__("Candle.add", a, b)
+pub tensorAdd(a, b) = __native__("Candle.add", a, b)
 
 # Element-wise subtraction
-pub sub(a, b) = __native__("Candle.sub", a, b)
+pub tensorSub(a, b) = __native__("Candle.sub", a, b)
 
 # Element-wise multiplication
-pub mul(a, b) = __native__("Candle.mul", a, b)
+pub tensorMul(a, b) = __native__("Candle.mul", a, b)
 
 # Element-wise division
-pub div(a, b) = __native__("Candle.div", a, b)
+pub tensorDiv(a, b) = __native__("Candle.div", a, b)
 
 # Matrix multiplication
 pub matmul(a, b) = __native__("Candle.matmul", a, b)
@@ -53,10 +53,10 @@ pub matmul(a, b) = __native__("Candle.matmul", a, b)
 # =============================================================================
 
 # Element-wise exponential
-pub exp(t) = __native__("Candle.exp", t)
+pub tensorExp(t) = __native__("Candle.exp", t)
 
 # Element-wise natural logarithm
-pub log(t) = __native__("Candle.log", t)
+pub tensorLog(t) = __native__("Candle.log", t)
 
 # Element-wise ReLU activation
 pub relu(t) = __native__("Candle.relu", t)
@@ -76,9 +76,9 @@ pub softmax(t, dim) = __native__("Candle.softmax", t, dim)
 # reshape(t, [4, 2]) -> Tensor with new shape
 pub reshape(t, newShape) = __native__("Candle.reshape", t, newShape)
 
-# Transpose two dimensions
-# transpose(t, 0, 1) -> Tensor with dims 0 and 1 swapped
-pub transpose(t, dim1, dim2) = __native__("Candle.transpose", t, dim1, dim2)
+# Transpose (swap) two dimensions
+# swapDims(t, 0, 1) -> Tensor with dims 0 and 1 swapped
+pub swapDims(t, dim1, dim2) = __native__("Candle.transpose", t, dim1, dim2)
 
 # Remove dimension of size 1
 # squeeze(t, dim) -> Tensor with dim removed if size is 1
@@ -92,17 +92,21 @@ pub unsqueeze(t, dim) = __native__("Candle.unsqueeze", t, dim)
 # Reductions
 # =============================================================================
 
-# Sum all elements or along a dimension
-# sum(t) -> Scalar tensor with sum of all elements
-# sum(t, dim) -> Tensor with sum along dim
-pub sum(t) = __native__("Candle.sum", t)
-pub sumDim(t, dim) = __native__("Candle.sum", t, dim)
+# Sum all elements
+# tensorSum(t) -> Scalar tensor with sum of all elements
+pub tensorSum(t) = __native__("Candle.sum", t)
 
-# Mean of all elements or along a dimension
-# mean(t) -> Scalar tensor with mean of all elements
-# mean(t, dim) -> Tensor with mean along dim
-pub mean(t) = __native__("Candle.mean", t)
-pub meanDim(t, dim) = __native__("Candle.mean", t, dim)
+# Sum along a dimension
+# tensorSumDim(t, dim) -> Tensor with sum along dim
+pub tensorSumDim(t, dim) = __native__("Candle.sum", t, dim)
+
+# Mean of all elements
+# tensorMean(t) -> Scalar tensor with mean of all elements
+pub tensorMean(t) = __native__("Candle.mean", t)
+
+# Mean along a dimension
+# tensorMeanDim(t, dim) -> Tensor with mean along dim
+pub tensorMeanDim(t, dim) = __native__("Candle.mean", t, dim)
 
 # Index of maximum value along a dimension
 # argmax(t, dim) -> Tensor with indices of max values along dim
@@ -113,12 +117,12 @@ pub argmax(t, dim) = __native__("Candle.argmax", t, dim)
 # =============================================================================
 
 # Get the shape of a tensor as a list
-# shape(t) -> [2, 3]
-pub shape(t) = __native__("Candle.shape", t)
+# tensorShape(t) -> [2, 3]
+pub tensorShape(t) = __native__("Candle.shape", t)
 
 # Convert tensor to nested list
 # toList(t) -> [[1.0, 2.0], [3.0, 4.0]]
 pub toList(t) = __native__("Candle.toList", t)
 
 # Clone a tensor
-pub clone(t) = __native__("Candle.clone", t)
+pub tensorClone(t) = __native__("Candle.clone", t)
