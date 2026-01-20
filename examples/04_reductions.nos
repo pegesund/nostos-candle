@@ -49,12 +49,10 @@ main() = {
                        [0.8, 0.1, 0.1]])
     println("Scores tensor:")
     println(toList(scores))
-    println("\nargmax(scores, 1) - returns tensor of indices")
-    println("(row 0 max at index 1, row 1 max at index 0)")
-    # Note: argmax returns U32 tensor, use tensorShape to verify
+    println("\nargmax(scores, 1) - index of max per row:")
     predictions = argmax(scores, 1)
-    println("Predictions shape:")
-    println(tensorShape(predictions))
+    println(toList(predictions))
+    println("(row 0 max at index 1, row 1 max at index 0)")
 
     0
 }

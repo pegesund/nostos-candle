@@ -173,28 +173,28 @@ fn flatten_nested_list(list: &[Value]) -> Result<(Vec<f32>, Vec<usize>), String>
 fn tensor_add(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let a = value_to_tensor(&args[0])?;
     let b = value_to_tensor(&args[1])?;
-    let result = a.add(b).map_err(|e| e.to_string())?;
+    let result = a.broadcast_add(b).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
 fn tensor_sub(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let a = value_to_tensor(&args[0])?;
     let b = value_to_tensor(&args[1])?;
-    let result = a.sub(b).map_err(|e| e.to_string())?;
+    let result = a.broadcast_sub(b).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
 fn tensor_mul(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let a = value_to_tensor(&args[0])?;
     let b = value_to_tensor(&args[1])?;
-    let result = a.mul(b).map_err(|e| e.to_string())?;
+    let result = a.broadcast_mul(b).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
 fn tensor_div(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let a = value_to_tensor(&args[0])?;
     let b = value_to_tensor(&args[1])?;
-    let result = a.div(b).map_err(|e| e.to_string())?;
+    let result = a.broadcast_div(b).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
@@ -319,15 +319,38 @@ fn tensor_shape(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
 fn tensor_to_list(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let t = value_to_tensor(&args[0])?;
     let flat = t.flatten_all().map_err(|e| e.to_string())?;
-    let data: Vec<f32> = flat.to_vec1().map_err(|e| e.to_string())?;
     let shape = t.dims();
 
+    // Extract data based on dtype
+    let data: Vec<f64> = match t.dtype() {
+        DType::F32 => {
+            let vec: Vec<f32> = flat.to_vec1().map_err(|e| e.to_string())?;
+            vec.into_iter().map(|v| v as f64).collect()
+        }
+        DType::F64 => {
+            flat.to_vec1().map_err(|e| e.to_string())?
+        }
+        DType::U32 => {
+            let vec: Vec<u32> = flat.to_vec1().map_err(|e| e.to_string())?;
+            vec.into_iter().map(|v| v as f64).collect()
+        }
+        DType::I64 => {
+            let vec: Vec<i64> = flat.to_vec1().map_err(|e| e.to_string())?;
+            vec.into_iter().map(|v| v as f64).collect()
+        }
+        DType::U8 => {
+            let vec: Vec<u8> = flat.to_vec1().map_err(|e| e.to_string())?;
+            vec.into_iter().map(|v| v as f64).collect()
+        }
+        dtype => return Err(format!("Unsupported dtype for toList: {:?}", dtype)),
+    };
+
     // Reconstruct nested list from shape
-    fn build_nested(data: &[f32], shape: &[usize], offset: &mut usize) -> Value {
+    fn build_nested(data: &[f64], shape: &[usize], offset: &mut usize) -> Value {
         if shape.len() == 1 {
             let values: Vec<Value> = data[*offset..*offset + shape[0]]
                 .iter()
-                .map(|&f| Value::Float(f as f64))
+                .map(|&f| Value::Float(f))
                 .collect();
             *offset += shape[0];
             Value::List(Arc::new(values))
@@ -342,7 +365,7 @@ fn tensor_to_list(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
 
     if shape.is_empty() {
         // Scalar
-        Ok(Value::Float(data[0] as f64))
+        Ok(Value::Float(data[0]))
     } else {
         let mut offset = 0;
         Ok(build_nested(&data, shape, &mut offset))
