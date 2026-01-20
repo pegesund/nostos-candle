@@ -22,6 +22,7 @@ fn register(reg: &mut ExtRegistry) {
     reg.add("Candle.ones", tensor_ones);
     reg.add("Candle.randn", tensor_randn);
     reg.add("Candle.fromList", tensor_from_list);
+    reg.add("Candle.fromIntList", tensor_from_int_list);
     reg.add("Candle.arange", tensor_arange);
 
     // Binary operations
@@ -167,6 +168,63 @@ fn tensor_arange(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let tensor = Tensor::arange(0u32, n, &Device::Cpu)
         .map_err(|e| e.to_string())?;
     Ok(tensor_to_value(tensor))
+}
+
+/// Create tensor from integer list (for token IDs): fromIntList([101, 7592]) -> Tensor
+/// Also handles nested lists: fromIntList([[101, 102], [103, 104]]) -> Tensor [2, 2]
+fn tensor_from_int_list(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let list = args[0].as_list()?;
+    let (data, shape) = flatten_int_list(list)?;
+
+    // Create as i64 tensor (compatible with embedding lookups)
+    let tensor = Tensor::from_slice(&data, shape.as_slice(), &Device::Cpu)
+        .map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(tensor))
+}
+
+// Helper to flatten nested integer lists
+fn flatten_int_list(list: &[Value]) -> Result<(Vec<i64>, Vec<usize>), String> {
+    if list.is_empty() {
+        return Ok((vec![], vec![0]));
+    }
+
+    match &list[0] {
+        Value::Int(_) => {
+            // 1D: list of integers
+            let data: Vec<i64> = list.iter()
+                .map(|v| v.as_i64())
+                .collect::<Result<_, _>>()?;
+            Ok((data, vec![list.len()]))
+        }
+        Value::List(_) => {
+            // ND: list of lists
+            let mut all_data = Vec::new();
+            let mut inner_shape = None;
+
+            for item in list {
+                let inner = item.as_list()?;
+                let (data, shape) = flatten_int_list(inner)?;
+
+                if let Some(ref expected) = inner_shape {
+                    if &shape != expected {
+                        return Err("Inconsistent tensor shape".to_string());
+                    }
+                } else {
+                    inner_shape = Some(shape);
+                }
+
+                all_data.extend(data);
+            }
+
+            let mut shape = vec![list.len()];
+            if let Some(inner) = inner_shape {
+                shape.extend(inner);
+            }
+
+            Ok((all_data, shape))
+        }
+        _ => Err("Expected integer or list of integers".to_string())
+    }
 }
 
 // Helper to flatten nested lists and infer shape

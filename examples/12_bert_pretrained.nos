@@ -5,7 +5,16 @@
 use candle.*
 
 # =============================================================================
-# Helper Functions
+# Tokenization (isolated to avoid type inference issues)
+# =============================================================================
+
+getTokenIds(text) = {
+    tok = loadTokenizer("/home/user/nostos-candle/models/bert-tokenizer.json")
+    encode(tok, text)
+}
+
+# =============================================================================
+# Attention Helpers
 # =============================================================================
 
 splitHeads(x, numHeads) = {
@@ -43,12 +52,16 @@ multiHeadAttention(q, k, v, numHeads, headDimF, mask) = {
     mergeHeads(contiguous(attnOutput))
 }
 
-bertEmbeddings(tokenIds, tokenTypeIds, wordEmb, posEmb, typeEmb, lnGamma, lnBeta) = {
-    tokEmb = embedding(tokenIds, wordEmb)
-    seqLen = (tensorShape(tokenIds))[1]
+# =============================================================================
+# BERT Components
+# =============================================================================
+
+bertEmbeddings(tokenTensor, typeIds, wordEmb, posEmb, typeEmb, lnGamma, lnBeta) = {
+    tokEmb = embedding(tokenTensor, wordEmb)
+    seqLen = (tensorShape(tokenTensor))[1]
     posIds = unsqueeze(arange(seqLen), 0)
     posEmbedded = embedding(posIds, posEmb)
-    typeEmbedded = embedding(tokenTypeIds, typeEmb)
+    typeEmbedded = embedding(typeIds, typeEmb)
     combined = tensorAdd(tokEmb, posEmbedded)
     combined2 = tensorAdd(combined, typeEmbedded)
     layerNorm(combined2, lnGamma, lnBeta)
@@ -80,23 +93,32 @@ main() = {
     numHeads = 2
     headDimF = 64.0
 
-    # Load model
-    println("Loading safetensors...")
+    # STEP 1: Tokenize first (isolated from tensor ops)
+    testText = "hello world"
+    println("Input: \"" ++ testText ++ "\"")
+    tokenIds = getTokenIds(testText)
+    println("Token IDs:")
+    println(tokenIds)
+
+    # STEP 2: Convert to tensors immediately
+    tokenTensor = unsqueeze(fromIntList(tokenIds), 0)
+    typeIds = fromIntList([[0, 0, 0, 0]])  # All zeros for single sentence
+    println("Token tensor shape:")
+    println(tensorShape(tokenTensor))
+
+    # STEP 3: Load model
+    println("\nLoading safetensors...")
     model = loadSafetensors("/home/user/nostos-candle/models/bert-small.safetensors")
-    println("Model loaded!\n")
+    println("Model loaded!")
 
     # Load embeddings
-    println("Loading embedding weights...")
     wordEmb = getTensor(model, "bert.embeddings.word_embeddings.weight")
     posEmb = getTensor(model, "bert.embeddings.position_embeddings.weight")
     typeEmb = getTensor(model, "bert.embeddings.token_type_embeddings.weight")
     embLnG = getTensor(model, "bert.embeddings.LayerNorm.weight")
     embLnB = getTensor(model, "bert.embeddings.LayerNorm.bias")
-    println("Word embedding shape:")
-    println(tensorShape(wordEmb))
 
     # Load encoder layer 0
-    println("\nLoading layer 0...")
     l0wQ = getTensor(model, "bert.encoder.layer.0.attention.self.query.weight")
     l0wK = getTensor(model, "bert.encoder.layer.0.attention.self.key.weight")
     l0wV = getTensor(model, "bert.encoder.layer.0.attention.self.value.weight")
@@ -115,7 +137,6 @@ main() = {
     l0ln2B = getTensor(model, "bert.encoder.layer.0.output.LayerNorm.bias")
 
     # Load encoder layer 1
-    println("Loading layer 1...")
     l1wQ = getTensor(model, "bert.encoder.layer.1.attention.self.query.weight")
     l1wK = getTensor(model, "bert.encoder.layer.1.attention.self.key.weight")
     l1wV = getTensor(model, "bert.encoder.layer.1.attention.self.value.weight")
@@ -138,29 +159,16 @@ main() = {
     poolerB = getTensor(model, "bert.pooler.dense.bias")
     println("Weights loaded!\n")
 
-    # Test input: "hello world" -> [CLS]=101, hello=7592, world=2088, [SEP]=102
-    println("Input: \"hello world\"")
-    println("Token IDs: [101, 7592, 2088, 102]")
-
-    # Create tensors
-    tokenTensor = fromList([[101, 7592, 2088, 102]])
-    println("Token tensor shape:")
-    println(tensorShape(tokenTensor))
-
-    # Token types (all zeros for single sentence)
-    typeIds = fromList([[0, 0, 0, 0]])
-
     # Create mask (no padding for this input)
     mask = createAttentionMask(tokenTensor, 0)
 
     # Forward pass
-    println("\n--- Forward Pass ---\n")
+    println("--- Forward Pass ---\n")
 
     println("1. Embeddings")
     embedded = bertEmbeddings(tokenTensor, typeIds, wordEmb, posEmb, typeEmb, embLnG, embLnB)
     println("   Shape:")
     println(tensorShape(embedded))
-
     embSlice = narrow(narrow(embedded, 0, 0, 1), 1, 0, 1)
     embValues = squeeze(squeeze(embSlice, 0), 0)
     println("   First 5 values of CLS embedding:")

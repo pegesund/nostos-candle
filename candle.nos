@@ -25,9 +25,14 @@ pub ones(shape) = __native__("Candle.ones", shape)
 # randn([2, 3]) -> Tensor of shape [2, 3]
 pub randn(shape) = __native__("Candle.randn", shape)
 
-# Create a tensor from a nested list
+# Create a tensor from a nested list (float values)
 # fromList([[1.0, 2.0], [3.0, 4.0]]) -> Tensor of shape [2, 2]
 pub fromList(data) = __native__("Candle.fromList", data)
+
+# Create a tensor from integer list (for token IDs)
+# fromIntList([101, 7592, 2088]) -> Tensor of shape [3]
+# fromIntList([[101, 102], [103, 104]]) -> Tensor of shape [2, 2]
+pub fromIntList(data) = __native__("Candle.fromIntList", data)
 
 # Create a 1D tensor with values from 0 to n-1
 # arange(5) -> Tensor [0, 1, 2, 3, 4]
