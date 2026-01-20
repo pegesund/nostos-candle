@@ -4,9 +4,13 @@
 
 use candle_core::{DType, Device, Tensor};
 use nostos_extension::*;
+use std::collections::HashMap;
 use std::sync::Arc;
 
 declare_extension!("candle", "0.1.0", register);
+
+// Type ID for tensor maps (loaded safetensors)
+const TENSOR_MAP_TYPE_ID: u64 = 2;
 
 fn register(reg: &mut ExtRegistry) {
     // Tensor creation
@@ -14,6 +18,7 @@ fn register(reg: &mut ExtRegistry) {
     reg.add("Candle.ones", tensor_ones);
     reg.add("Candle.randn", tensor_randn);
     reg.add("Candle.fromList", tensor_from_list);
+    reg.add("Candle.arange", tensor_arange);
 
     // Binary operations
     reg.add("Candle.add", tensor_add);
@@ -21,29 +26,50 @@ fn register(reg: &mut ExtRegistry) {
     reg.add("Candle.mul", tensor_mul);
     reg.add("Candle.div", tensor_div);
     reg.add("Candle.matmul", tensor_matmul);
+    reg.add("Candle.pow", tensor_pow);
 
     // Unary operations
     reg.add("Candle.exp", tensor_exp);
     reg.add("Candle.log", tensor_log);
+    reg.add("Candle.sqrt", tensor_sqrt);
+    reg.add("Candle.tanh", tensor_tanh);
     reg.add("Candle.relu", tensor_relu);
     reg.add("Candle.gelu", tensor_gelu);
     reg.add("Candle.softmax", tensor_softmax);
+    reg.add("Candle.neg", tensor_neg);
 
     // Shape operations
     reg.add("Candle.reshape", tensor_reshape);
     reg.add("Candle.transpose", tensor_transpose);
     reg.add("Candle.squeeze", tensor_squeeze);
     reg.add("Candle.unsqueeze", tensor_unsqueeze);
+    reg.add("Candle.cat", tensor_cat);
+    reg.add("Candle.narrow", tensor_narrow);
+    reg.add("Candle.indexSelect", tensor_index_select);
+    reg.add("Candle.contiguous", tensor_contiguous);
 
     // Reductions
     reg.add("Candle.sum", tensor_sum);
     reg.add("Candle.mean", tensor_mean);
     reg.add("Candle.argmax", tensor_argmax);
+    reg.add("Candle.var", tensor_var);
 
     // Tensor info
     reg.add("Candle.shape", tensor_shape);
     reg.add("Candle.toList", tensor_to_list);
     reg.add("Candle.clone", tensor_clone);
+    reg.add("Candle.dtype", tensor_dtype);
+
+    // Neural network operations
+    reg.add("Candle.layerNorm", layer_norm);
+    reg.add("Candle.embedding", embedding_lookup);
+    reg.add("Candle.linear", linear);
+    reg.add("Candle.dropout", dropout);
+
+    // Model loading
+    reg.add("Candle.loadSafetensors", load_safetensors);
+    reg.add("Candle.getTensor", get_tensor_from_map);
+    reg.add("Candle.listTensors", list_tensors);
 }
 
 // Type ID for tensors in GcNativeHandle
@@ -117,6 +143,14 @@ fn tensor_from_list(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> 
     let (data, shape) = flatten_nested_list(list)?;
 
     let tensor = Tensor::from_slice(&data, shape.as_slice(), &Device::Cpu)
+        .map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(tensor))
+}
+
+/// Create a 1D tensor with values from 0 to n-1: arange(5) -> [0, 1, 2, 3, 4]
+fn tensor_arange(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let n = args[0].as_i64()? as u32;
+    let tensor = Tensor::arange(0u32, n, &Device::Cpu)
         .map_err(|e| e.to_string())?;
     Ok(tensor_to_value(tensor))
 }
@@ -205,6 +239,13 @@ fn tensor_matmul(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     Ok(tensor_to_value(result))
 }
 
+fn tensor_pow(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let exp = args[1].as_f64()? as f64;
+    let result = t.powf(exp).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
 // ==================== Unary Operations ====================
 
 fn tensor_exp(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
@@ -216,6 +257,24 @@ fn tensor_exp(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
 fn tensor_log(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let t = value_to_tensor(&args[0])?;
     let result = t.log().map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+fn tensor_sqrt(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = t.sqrt().map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+fn tensor_tanh(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = t.tanh().map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+fn tensor_neg(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = t.neg().map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
@@ -269,6 +328,46 @@ fn tensor_unsqueeze(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> 
     Ok(tensor_to_value(result))
 }
 
+/// Concatenate tensors along a dimension: cat([t1, t2], dim) -> Tensor
+fn tensor_cat(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let tensor_list = args[0].as_list()?;
+    let dim = args[1].as_i64()? as usize;
+
+    let tensors: Vec<&Tensor> = tensor_list
+        .iter()
+        .map(|v| value_to_tensor(v))
+        .collect::<Result<_, _>>()?;
+
+    let result = Tensor::cat(&tensors, dim).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Slice a tensor: narrow(t, dim, start, len) -> Tensor
+fn tensor_narrow(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let dim = args[1].as_i64()? as usize;
+    let start = args[2].as_i64()? as usize;
+    let len = args[3].as_i64()? as usize;
+    let result = t.narrow(dim, start, len).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Select indices along a dimension: indexSelect(t, dim, indices) -> Tensor
+fn tensor_index_select(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let dim = args[1].as_i64()? as usize;
+    let indices = value_to_tensor(&args[2])?;
+    let result = t.index_select(indices, dim).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Make tensor contiguous in memory
+fn tensor_contiguous(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = t.contiguous().map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
 // ==================== Reductions ====================
 
 fn tensor_sum(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
@@ -305,6 +404,15 @@ fn tensor_argmax(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let t = value_to_tensor(&args[0])?;
     let dim = args[1].as_i64()? as usize;
     let result = t.argmax_keepdim(dim).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Variance along a dimension: var(t, dim) -> Tensor
+fn tensor_var(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let dim = args[1].as_i64()? as usize;
+    // Variance with Bessel's correction (ddof=1)
+    let result = t.var_keepdim(dim).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
@@ -375,6 +483,172 @@ fn tensor_to_list(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
 fn tensor_clone(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let t = value_to_tensor(&args[0])?;
     Ok(tensor_to_value(t.clone()))
+}
+
+/// Get the dtype of a tensor as a string
+fn tensor_dtype(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let dtype_str = match t.dtype() {
+        DType::F32 => "f32",
+        DType::F64 => "f64",
+        DType::U32 => "u32",
+        DType::I64 => "i64",
+        DType::U8 => "u8",
+        DType::BF16 => "bf16",
+        DType::F16 => "f16",
+    };
+    Ok(Value::String(Arc::new(dtype_str.to_string())))
+}
+
+// ==================== Neural Network Operations ====================
+
+/// Layer normalization: layerNorm(x, gamma, beta, eps) -> Tensor
+/// Normalizes the last dimension(s) of x
+fn layer_norm(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let x = value_to_tensor(&args[0])?;
+    let gamma = value_to_tensor(&args[1])?;
+    let beta = value_to_tensor(&args[2])?;
+    let eps = if args.len() > 3 {
+        args[3].as_f64()? as f64
+    } else {
+        1e-5
+    };
+
+    // Get the normalized shape (last dimension)
+    let last_dim = x.dims().len() - 1;
+
+    // Compute mean and variance over last dimension
+    let mean = x.mean_keepdim(last_dim).map_err(|e| e.to_string())?;
+    let x_centered = x.broadcast_sub(&mean).map_err(|e| e.to_string())?;
+    let variance = x_centered.sqr().map_err(|e| e.to_string())?
+        .mean_keepdim(last_dim).map_err(|e| e.to_string())?;
+
+    // Normalize
+    let eps_tensor = Tensor::new(&[eps as f32], &Device::Cpu).map_err(|e| e.to_string())?;
+    let std = variance.broadcast_add(&eps_tensor).map_err(|e| e.to_string())?
+        .sqrt().map_err(|e| e.to_string())?;
+    let normalized = x_centered.broadcast_div(&std).map_err(|e| e.to_string())?;
+
+    // Apply scale (gamma) and shift (beta)
+    let scaled = normalized.broadcast_mul(gamma).map_err(|e| e.to_string())?;
+    let result = scaled.broadcast_add(beta).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(result))
+}
+
+/// Embedding lookup: embedding(indices, embeddings) -> Tensor
+/// indices: [batch, seq_len] of integers
+/// embeddings: [vocab_size, hidden_size]
+fn embedding_lookup(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let indices = value_to_tensor(&args[0])?;
+    let embeddings = value_to_tensor(&args[1])?;
+
+    // Convert indices to appropriate type if needed
+    let indices_u32 = if indices.dtype() != DType::U32 {
+        indices.to_dtype(DType::U32).map_err(|e| e.to_string())?
+    } else {
+        indices.clone()
+    };
+
+    let result = embeddings.index_select(&indices_u32.flatten_all().map_err(|e| e.to_string())?, 0)
+        .map_err(|e| e.to_string())?;
+
+    // Reshape to [batch, seq_len, hidden_size]
+    let mut new_shape: Vec<usize> = indices.dims().to_vec();
+    new_shape.push(embeddings.dims()[1]);
+    let result = result.reshape(new_shape).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(result))
+}
+
+/// Linear layer: linear(x, weight, bias) -> Tensor
+/// Computes x @ weight.T + bias
+fn linear(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let x = value_to_tensor(&args[0])?;
+    let weight = value_to_tensor(&args[1])?;
+
+    // x: [..., in_features], weight: [out_features, in_features]
+    // Result: [..., out_features]
+    let weight_t = weight.t().map_err(|e| e.to_string())?;
+
+    // Handle batched matmul: for 3D input [batch, seq, features],
+    // we need to use broadcast_matmul
+    let result = x.broadcast_matmul(&weight_t).map_err(|e| e.to_string())?;
+
+    // Add bias if provided
+    if args.len() > 2 {
+        let bias = value_to_tensor(&args[2])?;
+        let result = result.broadcast_add(bias).map_err(|e| e.to_string())?;
+        Ok(tensor_to_value(result))
+    } else {
+        Ok(tensor_to_value(result))
+    }
+}
+
+/// Dropout (inference mode - just returns input): dropout(x, p) -> Tensor
+fn dropout(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    // In inference mode, dropout is a no-op
+    let x = value_to_tensor(&args[0])?;
+    Ok(tensor_to_value(x.clone()))
+}
+
+// ==================== Model Loading ====================
+
+// Cleanup function for tensor maps
+fn tensor_map_cleanup(ptr: usize, type_id: u64) {
+    if type_id == TENSOR_MAP_TYPE_ID && ptr != 0 {
+        unsafe {
+            let _ = Box::from_raw(ptr as *mut HashMap<String, Tensor>);
+        }
+    }
+}
+
+/// Load safetensors file: loadSafetensors(path) -> TensorMap
+fn load_safetensors(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let path = args[0].as_string()?;
+    let path_str: &str = &path;
+
+    let tensors = candle_core::safetensors::load(path_str, &Device::Cpu)
+        .map_err(|e| format!("Failed to load safetensors: {}", e))?;
+
+    let map: HashMap<String, Tensor> = tensors.into_iter().collect();
+
+    Ok(Value::gc_handle(Box::new(map), TENSOR_MAP_TYPE_ID, tensor_map_cleanup))
+}
+
+// Helper to extract tensor map from Value
+fn value_to_tensor_map(v: &Value) -> Result<&HashMap<String, Tensor>, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != TENSOR_MAP_TYPE_ID {
+        return Err(format!("Expected TensorMap (type_id={}), got type_id={}", TENSOR_MAP_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 {
+        return Err("TensorMap handle is null".to_string());
+    }
+    Ok(unsafe { &*(handle.ptr as *const HashMap<String, Tensor>) })
+}
+
+/// Get a tensor from a tensor map: getTensor(map, name) -> Tensor
+fn get_tensor_from_map(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let map = value_to_tensor_map(&args[0])?;
+    let name = args[1].as_string()?;
+
+    let name_str: &str = &name;
+    let tensor = map.get(name_str)
+        .ok_or_else(|| format!("Tensor '{}' not found in model", name))?;
+
+    Ok(tensor_to_value(tensor.clone()))
+}
+
+/// List all tensor names in a tensor map: listTensors(map) -> [String]
+fn list_tensors(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let map = value_to_tensor_map(&args[0])?;
+
+    let names: Vec<Value> = map.keys()
+        .map(|k| Value::String(Arc::new(k.clone())))
+        .collect();
+
+    Ok(Value::List(Arc::new(names)))
 }
 
 #[cfg(test)]

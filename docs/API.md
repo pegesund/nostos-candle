@@ -95,10 +95,25 @@ v = fromList([1.0, 2.0, 3.0])           # 1D tensor
 
 ---
 
+### `arange(n)`
+Create a 1D tensor with values from 0 to n-1.
+
+**Parameters:**
+- `n`: Integer, number of elements
+
+**Returns:** Tensor (dtype: u32)
+
+**Example:**
+```nostos
+t = arange(5)  # [0, 1, 2, 3, 4]
+```
+
+---
+
 ## Binary Operations
 
 ### `tensorAdd(a, b)`
-Element-wise addition of two tensors.
+Element-wise addition with broadcasting support.
 
 **Parameters:**
 - `a`: Tensor
@@ -114,7 +129,7 @@ c = tensorAdd(a, b)  # c = a + b
 ---
 
 ### `tensorSub(a, b)`
-Element-wise subtraction of two tensors.
+Element-wise subtraction with broadcasting support.
 
 **Parameters:**
 - `a`: Tensor
@@ -130,7 +145,7 @@ c = tensorSub(a, b)  # c = a - b
 ---
 
 ### `tensorMul(a, b)`
-Element-wise multiplication of two tensors.
+Element-wise multiplication with broadcasting support.
 
 **Parameters:**
 - `a`: Tensor
@@ -146,7 +161,7 @@ c = tensorMul(a, b)  # c = a * b (element-wise)
 ---
 
 ### `tensorDiv(a, b)`
-Element-wise division of two tensors.
+Element-wise division with broadcasting support.
 
 **Parameters:**
 - `a`: Tensor
@@ -180,6 +195,22 @@ c = matmul(a, b)
 
 ---
 
+### `tensorPow(t, exp)`
+Element-wise power operation.
+
+**Parameters:**
+- `t`: Tensor
+- `exp`: Float, the exponent
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+squared = tensorPow(t, 2.0)  # t^2
+```
+
+---
+
 ## Unary Operations
 
 ### `tensorExp(t)`
@@ -208,6 +239,51 @@ Element-wise natural logarithm.
 **Example:**
 ```nostos
 result = tensorLog(fromList([1.0, 2.718, 10.0]))
+```
+
+---
+
+### `tensorSqrt(t)`
+Element-wise square root.
+
+**Parameters:**
+- `t`: Tensor (values must be non-negative)
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+result = tensorSqrt(fromList([1.0, 4.0, 9.0]))  # [1, 2, 3]
+```
+
+---
+
+### `tanh(t)`
+Element-wise hyperbolic tangent.
+
+**Parameters:**
+- `t`: Tensor
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+result = tanh(fromList([-1.0, 0.0, 1.0]))
+```
+
+---
+
+### `tensorNeg(t)`
+Element-wise negation.
+
+**Parameters:**
+- `t`: Tensor
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+result = tensorNeg(fromList([1.0, -2.0, 3.0]))  # [-1, 2, -3]
 ```
 
 ---
@@ -332,6 +408,77 @@ col = unsqueeze(t, 1)          # Shape [3, 1]
 
 ---
 
+### `cat(tensors, dim)`
+Concatenate tensors along a dimension.
+
+**Parameters:**
+- `tensors`: List of tensors
+- `dim`: Integer, dimension to concatenate along
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+a = fromList([[1.0, 2.0]])
+b = fromList([[3.0, 4.0]])
+c = cat([a, b], 0)  # [[1, 2], [3, 4]]
+```
+
+---
+
+### `narrow(t, dim, start, len)`
+Slice a tensor along a dimension.
+
+**Parameters:**
+- `t`: Tensor
+- `dim`: Integer, dimension to slice
+- `start`: Integer, starting index
+- `len`: Integer, length of slice
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+t = fromList([[1.0, 2.0, 3.0, 4.0]])
+sliced = narrow(t, 1, 1, 2)  # [[2, 3]]
+```
+
+---
+
+### `indexSelect(t, dim, indices)`
+Select indices along a dimension.
+
+**Parameters:**
+- `t`: Tensor
+- `dim`: Integer, dimension to select from
+- `indices`: Tensor of indices
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+t = fromList([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+indices = arange(2)  # [0, 1]
+selected = indexSelect(t, 1, indices)  # First 2 columns
+```
+
+---
+
+### `contiguous(t)`
+Make tensor contiguous in memory.
+
+**Parameters:**
+- `t`: Tensor
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+t = contiguous(transposed)
+```
+
+---
+
 ## Reductions
 
 ### `tensorSum(t)`
@@ -408,12 +555,29 @@ Index of maximum value along a dimension.
 - `t`: Tensor
 - `dim`: Integer, dimension to search
 
-**Returns:** Tensor of indices
+**Returns:** Tensor of indices (dtype: u32)
 
 **Example:**
 ```nostos
 scores = fromList([[0.1, 0.7, 0.2], [0.8, 0.1, 0.1]])
 predictions = argmax(scores, 1)  # [[1], [0]]
+```
+
+---
+
+### `tensorVar(t, dim)`
+Variance along a specific dimension.
+
+**Parameters:**
+- `t`: Tensor
+- `dim`: Integer, dimension to reduce
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+t = fromList([[1.0, 2.0, 3.0]])
+variance = tensorVar(t, 1)
 ```
 
 ---
@@ -468,6 +632,176 @@ copy = tensorClone(original)
 
 ---
 
+### `dtype(t)`
+Get the data type of a tensor as a string.
+
+**Parameters:**
+- `t`: Tensor
+
+**Returns:** String ("f32", "f64", "u32", "i64", "u8", "bf16", "f16")
+
+**Example:**
+```nostos
+t = randn([2, 3])
+println(dtype(t))  # "f32"
+```
+
+---
+
+## Neural Network Operations
+
+### `layerNorm(x, gamma, beta)`
+Layer normalization over the last dimension.
+
+**Parameters:**
+- `x`: Tensor [..., hidden_size]
+- `gamma`: Tensor [hidden_size] - scale parameter
+- `beta`: Tensor [hidden_size] - shift parameter
+
+**Returns:** Tensor (same shape as input)
+
+**Example:**
+```nostos
+x = randn([2, 4, 8])  # [batch, seq, hidden]
+gamma = ones([8])
+beta = zeros([8])
+normalized = layerNorm(x, gamma, beta)
+```
+
+---
+
+### `layerNormEps(x, gamma, beta, eps)`
+Layer normalization with custom epsilon.
+
+**Parameters:**
+- `x`: Tensor
+- `gamma`: Tensor - scale parameter
+- `beta`: Tensor - shift parameter
+- `eps`: Float - epsilon for numerical stability (default: 1e-5)
+
+**Returns:** Tensor
+
+---
+
+### `embedding(indices, embeddings)`
+Look up embeddings by indices.
+
+**Parameters:**
+- `indices`: Tensor of integers [batch, seq_len]
+- `embeddings`: Tensor [vocab_size, hidden_size]
+
+**Returns:** Tensor [batch, seq_len, hidden_size]
+
+**Example:**
+```nostos
+embeddings = randn([1000, 64])  # vocab=1000, hidden=64
+tokenIds = fromList([[5, 10, 15]])
+embedded = embedding(tokenIds, embeddings)  # [1, 3, 64]
+```
+
+---
+
+### `linear(x, weight)`
+Linear layer without bias: x @ weight.T
+
+**Parameters:**
+- `x`: Tensor [..., in_features]
+- `weight`: Tensor [out_features, in_features]
+
+**Returns:** Tensor [..., out_features]
+
+**Example:**
+```nostos
+x = randn([2, 4, 8])
+weight = randn([16, 8])
+output = linear(x, weight)  # [2, 4, 16]
+```
+
+---
+
+### `linearBias(x, weight, bias)`
+Linear layer with bias: x @ weight.T + bias
+
+**Parameters:**
+- `x`: Tensor [..., in_features]
+- `weight`: Tensor [out_features, in_features]
+- `bias`: Tensor [out_features]
+
+**Returns:** Tensor [..., out_features]
+
+**Example:**
+```nostos
+x = randn([2, 4, 8])
+weight = randn([16, 8])
+bias = zeros([16])
+output = linearBias(x, weight, bias)  # [2, 4, 16]
+```
+
+---
+
+### `dropout(x, p)`
+Dropout layer (inference mode - returns input unchanged).
+
+**Parameters:**
+- `x`: Tensor
+- `p`: Float, dropout probability (ignored in inference)
+
+**Returns:** Tensor (same as input)
+
+---
+
+## Model Loading (Safetensors)
+
+### `loadSafetensors(path)`
+Load a safetensors model file.
+
+**Parameters:**
+- `path`: String, path to the .safetensors file
+
+**Returns:** TensorMap (opaque handle to loaded tensors)
+
+**Example:**
+```nostos
+model = loadSafetensors("model.safetensors")
+```
+
+---
+
+### `getTensor(model, name)`
+Get a specific tensor from a loaded model by name.
+
+**Parameters:**
+- `model`: TensorMap from loadSafetensors
+- `name`: String, tensor name (e.g., "encoder.layer.0.attention.query.weight")
+
+**Returns:** Tensor
+
+**Example:**
+```nostos
+model = loadSafetensors("model.safetensors")
+weight = getTensor(model, "embeddings.word_embeddings.weight")
+println(tensorShape(weight))  # e.g., [30522, 768]
+```
+
+---
+
+### `listTensors(model)`
+List all tensor names in a loaded model.
+
+**Parameters:**
+- `model`: TensorMap from loadSafetensors
+
+**Returns:** List of strings
+
+**Example:**
+```nostos
+model = loadSafetensors("model.safetensors")
+names = listTensors(model)
+println(names)  # ["encoder.layer.0...", "encoder.layer.1...", ...]
+```
+
+---
+
 ## Direct Native Calls
 
 If you prefer not to use the wrapper module, you can call native functions directly:
@@ -480,9 +814,13 @@ shape = __native__("Candle.shape", t)
 ```
 
 Available native functions:
-- `Candle.zeros`, `Candle.ones`, `Candle.randn`, `Candle.fromList`
-- `Candle.add`, `Candle.sub`, `Candle.mul`, `Candle.div`, `Candle.matmul`
-- `Candle.exp`, `Candle.log`, `Candle.relu`, `Candle.gelu`, `Candle.softmax`
+- `Candle.zeros`, `Candle.ones`, `Candle.randn`, `Candle.fromList`, `Candle.arange`
+- `Candle.add`, `Candle.sub`, `Candle.mul`, `Candle.div`, `Candle.matmul`, `Candle.pow`
+- `Candle.exp`, `Candle.log`, `Candle.sqrt`, `Candle.tanh`, `Candle.neg`
+- `Candle.relu`, `Candle.gelu`, `Candle.softmax`
 - `Candle.reshape`, `Candle.transpose`, `Candle.squeeze`, `Candle.unsqueeze`
-- `Candle.sum`, `Candle.mean`, `Candle.argmax`
-- `Candle.shape`, `Candle.toList`, `Candle.clone`
+- `Candle.cat`, `Candle.narrow`, `Candle.indexSelect`, `Candle.contiguous`
+- `Candle.sum`, `Candle.mean`, `Candle.argmax`, `Candle.var`
+- `Candle.shape`, `Candle.toList`, `Candle.clone`, `Candle.dtype`
+- `Candle.layerNorm`, `Candle.embedding`, `Candle.linear`, `Candle.dropout`
+- `Candle.loadSafetensors`, `Candle.getTensor`, `Candle.listTensors`

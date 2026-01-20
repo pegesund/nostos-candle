@@ -1,0 +1,83 @@
+# New Operations Demo
+# Run: nostos --use candle examples/07_new_ops.nos
+
+use candle.*
+
+main() = {
+    println("=== New Tensor Operations ===\n")
+
+    # 1. arange
+    println("1. arange(5)")
+    println(toList(arange(5)))
+
+    # 2. sqrt, tanh, neg, pow
+    println("\n2. Unary ops on [1, 4, 9]")
+    t1 = fromList([1.0, 4.0, 9.0])
+    println("sqrt:")
+    println(toList(tensorSqrt(t1)))
+    println("pow 2:")
+    println(toList(tensorPow(t1, 2.0)))
+
+    t2 = fromList([-1.0, 0.0, 1.0])
+    println("\ntanh of [-1, 0, 1]:")
+    println(toList(tanh(t2)))
+    println("neg of [-1, 0, 1]:")
+    println(toList(tensorNeg(t2)))
+
+    # 3. cat - concatenate tensors
+    println("\n3. cat - concatenate")
+    a = fromList([[1.0, 2.0]])
+    b = fromList([[3.0, 4.0]])
+    c = fromList([[5.0, 6.0]])
+    println("cat([a, b, c], 0) where each is [1, 2]:")
+    println(toList(cat([a, b, c], 0)))
+
+    # 4. narrow - slicing
+    println("\n4. narrow - slicing")
+    t3 = fromList([[1.0, 2.0, 3.0, 4.0],
+                   [5.0, 6.0, 7.0, 8.0]])
+    println("Original 2x4 tensor:")
+    println(toList(t3))
+    println("narrow(t, 1, 1, 2) - cols 1-2:")
+    println(toList(narrow(t3, 1, 1, 2)))
+
+    # 5. layerNorm
+    println("\n5. layerNorm")
+    lnInput = fromList([[1.0, 2.0, 3.0],
+                        [4.0, 5.0, 6.0]])
+    gamma = fromList([1.0, 1.0, 1.0])
+    beta = fromList([0.0, 0.0, 0.0])
+    println("Input:")
+    println(toList(lnInput))
+    println("After layer norm (gamma=1, beta=0):")
+    normalized = layerNorm(lnInput, gamma, beta)
+    println(toList(normalized))
+
+    # 6. linear layer
+    println("\n6. linear layer")
+    linInput = fromList([[1.0, 2.0]])  # [1, 2] input
+    w = fromList([[0.5, 0.5],   # [2, 2] weight -> out=2
+                  [1.0, 0.0]])
+    bias = fromList([0.1, 0.2])
+    println("x @ w.T + bias:")
+    println(toList(linearBias(linInput, w, bias)))
+
+    # 7. embedding lookup
+    println("\n7. embedding lookup")
+    embeddings = fromList([[0.1, 0.2],   # token 0
+                          [0.3, 0.4],   # token 1
+                          [0.5, 0.6],   # token 2
+                          [0.7, 0.8]])  # token 3
+    indices = fromList([[0, 2, 1]])  # lookup tokens 0, 2, 1
+    println("Embeddings for indices [0, 2, 1]:")
+    println(toList(embedding(indices, embeddings)))
+
+    # 8. dtype
+    println("\n8. dtype")
+    println("dtype of randn tensor:")
+    println(dtype(randn([2])))
+    println("dtype of arange tensor:")
+    println(dtype(arange(3)))
+
+    0
+}

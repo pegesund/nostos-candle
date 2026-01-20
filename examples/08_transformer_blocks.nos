@@ -1,0 +1,144 @@
+# Transformer Building Blocks
+# Shows how to build BERT-style components using Candle primitives
+# Run: nostos --use candle examples/08_transformer_blocks.nos
+
+use candle.*
+
+# Helper: scaled dot-product attention
+# Q, K, V: [batch, seq_len, hidden_size]
+# Returns: [batch, seq_len, hidden_size]
+attention(q, k, v, hiddenSize) = {
+    # Scale factor: 1/sqrt(hidden_size)
+    scale = tensorSqrt(fromList([hiddenSize * 1.0]))
+
+    # Attention scores: Q @ K.T / sqrt(d)
+    kT = swapDims(k, 1, 2)  # [batch, hidden, seq]
+    scores = matmul(q, kT)  # [batch, seq, seq]
+    scaledScores = tensorDiv(scores, scale)
+
+    # Softmax and weighted sum
+    attnWeights = softmax(scaledScores, 2)  # Softmax over keys
+    matmul(attnWeights, v)  # [batch, seq, hidden]
+}
+
+# Helper: Feed-forward network
+# x: [batch, seq_len, hidden]
+# w1: [intermediate, hidden], w2: [hidden, intermediate]
+ffn(x, w1, b1, w2, b2) = {
+    # Up projection + GELU + Down projection
+    hidden = linearBias(x, w1, b1)
+    activated = gelu(hidden)
+    linearBias(activated, w2, b2)
+}
+
+main() = {
+    println("=== Transformer Building Blocks ===\n")
+
+    # Configuration (separate int/float versions for type compatibility)
+    batchSize = 2
+    seqLen = 4
+    hiddenSize = 8
+    hiddenSizeF = 8.0  # Float version for attention scaling
+    intermediateSize = 16
+
+    # 1. Token Embeddings
+    println("1. Token Embedding Lookup")
+    println("-------------------------")
+    vocabSize = 100
+    embeddingTable = randn([vocabSize, hiddenSize])
+
+    # Fake token IDs
+    tokenIds = fromList([[1, 5, 10, 2],
+                         [3, 7, 12, 4]])
+    println("Token IDs shape:")
+    println(tensorShape(tokenIds))
+
+    embeddings = embedding(tokenIds, embeddingTable)
+    println("Embedded tokens shape:")
+    println(tensorShape(embeddings))
+
+    # 2. Position Embeddings (learned)
+    println("\n2. Add Position Embeddings")
+    println("--------------------------")
+    posEmbeddings = randn([1, seqLen, hiddenSize])
+    x = tensorAdd(embeddings, posEmbeddings)
+    println("After position add shape:")
+    println(tensorShape(x))
+
+    # 3. Self-Attention
+    println("\n3. Self-Attention")
+    println("-----------------")
+
+    # Q, K, V projections (weight matrices)
+    wQ = randn([hiddenSize, hiddenSize])
+    wK = randn([hiddenSize, hiddenSize])
+    wV = randn([hiddenSize, hiddenSize])
+
+    q = linear(x, wQ)
+    k = linear(x, wK)
+    v = linear(x, wV)
+
+    println("Q shape:")
+    println(tensorShape(q))
+
+    attnOut = attention(q, k, v, hiddenSizeF)
+    println("Attention output shape:")
+    println(tensorShape(attnOut))
+
+    # 4. Residual + LayerNorm
+    println("\n4. Residual Connection + LayerNorm")
+    println("----------------------------------")
+    residual1 = tensorAdd(x, attnOut)
+    gamma1 = ones([hiddenSize])
+    beta1 = zeros([hiddenSize])
+    normed1 = layerNorm(residual1, gamma1, beta1)
+    println("After residual + LN shape:")
+    println(tensorShape(normed1))
+
+    # 5. Feed-Forward Network
+    println("\n5. Feed-Forward Network")
+    println("-----------------------")
+    wFF1 = randn([intermediateSize, hiddenSize])
+    bFF1 = zeros([intermediateSize])
+    wFF2 = randn([hiddenSize, intermediateSize])
+    bFF2 = zeros([hiddenSize])
+
+    ffnOut = ffn(normed1, wFF1, bFF1, wFF2, bFF2)
+    println("FFN output shape:")
+    println(tensorShape(ffnOut))
+
+    # 6. Final Residual + LayerNorm
+    println("\n6. Final Residual + LayerNorm")
+    println("-----------------------------")
+    residual2 = tensorAdd(normed1, ffnOut)
+    gamma2 = ones([hiddenSize])
+    beta2 = zeros([hiddenSize])
+    layerOutput = layerNorm(residual2, gamma2, beta2)
+    println("Layer output shape:")
+    println(tensorShape(layerOutput))
+
+    # 7. Pooling (CLS token)
+    println("\n7. Pooling (CLS token extraction)")
+    println("---------------------------------")
+    clsToken = narrow(layerOutput, 1, 0, 1)  # First token
+    pooled = squeeze(clsToken, 1)
+    println("Pooled output shape (batch, hidden):")
+    println(tensorShape(pooled))
+
+    # 8. Classification head
+    println("\n8. Classification Head")
+    println("---------------------")
+    numClasses = 3
+    classifierW = randn([numClasses, hiddenSize])
+    classifierB = zeros([numClasses])
+    logits = linearBias(pooled, classifierW, classifierB)
+    probs = softmax(logits, 1)
+    println("Classification probs shape:")
+    println(tensorShape(probs))
+    println("Sample probabilities:")
+    println(toList(probs))
+
+    println("\n=== Complete Transformer Block Demo ===")
+
+    0
+}
