@@ -1,0 +1,18 @@
+[project]
+name = "nostos-candle"
+version = "0.1.0"
+
+[extensions]
+candle = { path = "target/release/libnostos_candle.so" }
+
+[[bin]]
+name = "test_simple"
+entry = "examples.test_candle_simple.main"
+
+[[bin]]
+name = "test_bert"
+entry = "examples.test_bert.main"
+
+[[bin]]
+name = "test_traits"
+entry = "examples.test_traits.main"

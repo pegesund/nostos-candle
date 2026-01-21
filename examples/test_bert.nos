@@ -1,0 +1,49 @@
+# BERT Model Loading Example
+# Uses the candle wrapper API instead of __native__ calls
+
+use candle.*
+
+# Define a typed model wrapper
+type BertModel = { weights: TensorMap, tokenizer: Tokenizer }
+
+# Load BERT model with typed return
+loadBert() -> BertModel = {
+    weights = loadSafetensors("/home/petter/dev/rust/nostos-candle/models/bert-small.safetensors")
+    tokenizer = loadTokenizer("/home/petter/dev/rust/nostos-candle/models/bert-tokenizer.json")
+    BertModel(weights, tokenizer)
+}
+
+main() = {
+    println("=== BERT Model Loading Example ===")
+    println("")
+
+    println("Loading BERT model...")
+    model = loadBert()
+    println("Model loaded!")
+    println("")
+
+    # Get embedding weights using wrapper function
+    embeds = getTensor(model.weights, "bert.embeddings.word_embeddings.weight")
+    println("Embedding shape:")
+    println(tensorShape(embeds))
+    println("")
+
+    # Tokenize some text
+    println("Tokenizing 'hello world'...")
+    ids = encode(model.tokenizer, "hello world")
+    println("Token IDs:")
+    println(ids)
+    println("")
+
+    # Decode back
+    text = decode(model.tokenizer, ids)
+    println("Decoded text:")
+    println(text)
+    println("")
+
+    # Get vocab size
+    vocabSz = vocabSize(model.tokenizer)
+    println("Vocabulary size: " ++ show(vocabSz))
+
+    0
+}

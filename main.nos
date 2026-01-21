@@ -1,0 +1,15 @@
+# Main entry point - delegates to examples
+# Run with: nostos . --bin <example_name>
+
+use candle.*
+
+main() = {
+    println("Nostos Candle - ML Extension")
+    println("Run with: nostos . --bin <example>")
+    println("")
+    println("Available examples:")
+    println("  test_simple    - Basic tensor operations")
+    println("  test_bert      - Load BERT model")
+    println("  test_traits    - Traits with extension types")
+    0
+}

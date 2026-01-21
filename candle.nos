@@ -14,276 +14,224 @@
 # =============================================================================
 
 # Create a tensor filled with zeros
-# zeros([2, 3]) -> Tensor of shape [2, 3]
-pub zeros(shape) = __native__("Candle.zeros", shape)
+pub zeros(shape: List[Int]) -> Tensor = __native__("Candle.zeros", shape)
 
 # Create a tensor filled with ones
-# ones([2, 3]) -> Tensor of shape [2, 3]
-pub ones(shape) = __native__("Candle.ones", shape)
+pub ones(shape: List[Int]) -> Tensor = __native__("Candle.ones", shape)
 
 # Create a tensor with random normal values (mean=0, std=1)
-# randn([2, 3]) -> Tensor of shape [2, 3]
-pub randn(shape) = __native__("Candle.randn", shape)
+pub randn(shape: List[Int]) -> Tensor = __native__("Candle.randn", shape)
 
 # Create a tensor from a nested list (float values)
-# fromList([[1.0, 2.0], [3.0, 4.0]]) -> Tensor of shape [2, 2]
-pub fromList(data) = __native__("Candle.fromList", data)
+pub fromList(data: List[Float]) -> Tensor = __native__("Candle.fromList", data)
 
 # Create a tensor from integer list (for token IDs)
-# fromIntList([101, 7592, 2088]) -> Tensor of shape [3]
-# fromIntList([[101, 102], [103, 104]]) -> Tensor of shape [2, 2]
-pub fromIntList(data) = __native__("Candle.fromIntList", data)
+pub fromIntList(data: List[Int]) -> Tensor = __native__("Candle.fromIntList", data)
 
 # Create a 1D tensor with values from 0 to n-1
-# arange(5) -> Tensor [0, 1, 2, 3, 4]
-pub arange(n) = __native__("Candle.arange", n)
+pub arange(n: Int) -> Tensor = __native__("Candle.arange", n)
 
 # =============================================================================
 # Binary Operations
 # =============================================================================
 
 # Element-wise addition (with broadcasting)
-pub tensorAdd(a, b) = __native__("Candle.add", a, b)
+pub tensorAdd(a: Tensor, b: Tensor) -> Tensor = __native__("Candle.add", a, b)
 
 # Element-wise subtraction (with broadcasting)
-pub tensorSub(a, b) = __native__("Candle.sub", a, b)
+pub tensorSub(a: Tensor, b: Tensor) -> Tensor = __native__("Candle.sub", a, b)
 
 # Element-wise multiplication (with broadcasting)
-pub tensorMul(a, b) = __native__("Candle.mul", a, b)
+pub tensorMul(a: Tensor, b: Tensor) -> Tensor = __native__("Candle.mul", a, b)
 
 # Element-wise division (with broadcasting)
-pub tensorDiv(a, b) = __native__("Candle.div", a, b)
+pub tensorDiv(a: Tensor, b: Tensor) -> Tensor = __native__("Candle.div", a, b)
 
 # Matrix multiplication
-pub matmul(a, b) = __native__("Candle.matmul", a, b)
+pub matmul(a: Tensor, b: Tensor) -> Tensor = __native__("Candle.matmul", a, b)
 
 # Element-wise power: tensorPow(t, 2.0) -> t^2
-pub tensorPow(t, exp) = __native__("Candle.pow", t, exp)
+pub tensorPow(t: Tensor, exp: Float) -> Tensor = __native__("Candle.pow", t, exp)
 
 # =============================================================================
 # Unary Operations
 # =============================================================================
 
 # Element-wise exponential
-pub tensorExp(t) = __native__("Candle.exp", t)
+pub tensorExp(t: Tensor) -> Tensor = __native__("Candle.exp", t)
 
 # Element-wise natural logarithm
-pub tensorLog(t) = __native__("Candle.log", t)
+pub tensorLog(t: Tensor) -> Tensor = __native__("Candle.log", t)
 
 # Element-wise square root
-pub tensorSqrt(t) = __native__("Candle.sqrt", t)
+pub tensorSqrt(t: Tensor) -> Tensor = __native__("Candle.sqrt", t)
 
 # Element-wise tanh
-pub tanh(t) = __native__("Candle.tanh", t)
+pub tanh(t: Tensor) -> Tensor = __native__("Candle.tanh", t)
 
 # Element-wise negation
-pub tensorNeg(t) = __native__("Candle.neg", t)
+pub tensorNeg(t: Tensor) -> Tensor = __native__("Candle.neg", t)
 
 # Element-wise ReLU activation
-pub relu(t) = __native__("Candle.relu", t)
+pub relu(t: Tensor) -> Tensor = __native__("Candle.relu", t)
 
 # Element-wise GELU activation
-pub gelu(t) = __native__("Candle.gelu", t)
+pub gelu(t: Tensor) -> Tensor = __native__("Candle.gelu", t)
 
 # Element-wise cosine
-pub tensorCos(t) = __native__("Candle.cos", t)
+pub tensorCos(t: Tensor) -> Tensor = __native__("Candle.cos", t)
 
 # Element-wise sine
-pub tensorSin(t) = __native__("Candle.sin", t)
+pub tensorSin(t: Tensor) -> Tensor = __native__("Candle.sin", t)
 
 # Softmax along a dimension
-# softmax(t, dim) -> Tensor with softmax applied along dim
-pub softmax(t, dim) = __native__("Candle.softmax", t, dim)
+pub softmax(t: Tensor, dim: Int) -> Tensor = __native__("Candle.softmax", t, dim)
 
 # =============================================================================
 # Shape Operations
 # =============================================================================
 
 # Reshape tensor to new shape
-# reshape(t, [4, 2]) -> Tensor with new shape
-pub reshape(t, newShape) = __native__("Candle.reshape", t, newShape)
+pub reshape(t: Tensor, newShape: List[Int]) -> Tensor = __native__("Candle.reshape", t, newShape)
 
 # Transpose (swap) two dimensions
-# swapDims(t, 0, 1) -> Tensor with dims 0 and 1 swapped
-pub swapDims(t, dim1, dim2) = __native__("Candle.transpose", t, dim1, dim2)
+pub swapDims(t: Tensor, dim1: Int, dim2: Int) -> Tensor = __native__("Candle.transpose", t, dim1, dim2)
 
 # Remove dimension of size 1
-# squeeze(t, dim) -> Tensor with dim removed if size is 1
-pub squeeze(t, dim) = __native__("Candle.squeeze", t, dim)
+pub squeeze(t: Tensor, dim: Int) -> Tensor = __native__("Candle.squeeze", t, dim)
 
 # Add dimension of size 1
-# unsqueeze(t, dim) -> Tensor with new dim of size 1
-pub unsqueeze(t, dim) = __native__("Candle.unsqueeze", t, dim)
+pub unsqueeze(t: Tensor, dim: Int) -> Tensor = __native__("Candle.unsqueeze", t, dim)
 
 # Concatenate tensors along a dimension
-# cat([t1, t2], dim) -> Tensor
-pub cat(tensors, dim) = __native__("Candle.cat", tensors, dim)
+pub cat(tensors: List[Tensor], dim: Int) -> Tensor = __native__("Candle.cat", tensors, dim)
 
 # Slice a tensor along a dimension
-# narrow(t, dim, start, len) -> Tensor slice
-pub narrow(t, dim, start, len) = __native__("Candle.narrow", t, dim, start, len)
+pub narrow(t: Tensor, dim: Int, start: Int, len: Int) -> Tensor = __native__("Candle.narrow", t, dim, start, len)
 
 # Select indices along a dimension
-# indexSelect(t, dim, indices) -> Tensor with selected indices
-pub indexSelect(t, dim, indices) = __native__("Candle.indexSelect", t, dim, indices)
+pub indexSelect(t: Tensor, dim: Int, indices: Tensor) -> Tensor = __native__("Candle.indexSelect", t, dim, indices)
 
 # Make tensor contiguous in memory
-pub contiguous(t) = __native__("Candle.contiguous", t)
+pub contiguous(t: Tensor) -> Tensor = __native__("Candle.contiguous", t)
 
 # =============================================================================
 # Reductions
 # =============================================================================
 
 # Sum all elements
-# tensorSum(t) -> Scalar tensor with sum of all elements
-pub tensorSum(t) = __native__("Candle.sum", t)
+pub tensorSum(t: Tensor) -> Tensor = __native__("Candle.sum", t)
 
 # Sum along a dimension
-# tensorSumDim(t, dim) -> Tensor with sum along dim
-pub tensorSumDim(t, dim) = __native__("Candle.sum", t, dim)
+pub tensorSumDim(t: Tensor, dim: Int) -> Tensor = __native__("Candle.sum", t, dim)
 
 # Mean of all elements
-# tensorMean(t) -> Scalar tensor with mean of all elements
-pub tensorMean(t) = __native__("Candle.mean", t)
+pub tensorMean(t: Tensor) -> Tensor = __native__("Candle.mean", t)
 
 # Mean along a dimension
-# tensorMeanDim(t, dim) -> Tensor with mean along dim
-pub tensorMeanDim(t, dim) = __native__("Candle.mean", t, dim)
+pub tensorMeanDim(t: Tensor, dim: Int) -> Tensor = __native__("Candle.mean", t, dim)
 
 # Index of maximum value along a dimension
-# argmax(t, dim) -> Tensor with indices of max values along dim
-pub argmax(t, dim) = __native__("Candle.argmax", t, dim)
+pub argmax(t: Tensor, dim: Int) -> Tensor = __native__("Candle.argmax", t, dim)
 
 # Variance along a dimension
-# tensorVar(t, dim) -> Tensor with variance along dim
-pub tensorVar(t, dim) = __native__("Candle.var", t, dim)
+pub tensorVar(t: Tensor, dim: Int) -> Tensor = __native__("Candle.var", t, dim)
 
 # =============================================================================
 # Tensor Info & Conversion
 # =============================================================================
 
 # Get the shape of a tensor as a list
-# tensorShape(t) -> [2, 3]
-pub tensorShape(t) = __native__("Candle.shape", t)
+pub tensorShape(t: Tensor) -> List[Int] = __native__("Candle.shape", t)
 
 # Convert tensor to nested list
-# toList(t) -> [[1.0, 2.0], [3.0, 4.0]]
-pub toList(t) = __native__("Candle.toList", t)
+pub toList(t: Tensor) -> List[Float] = __native__("Candle.toList", t)
 
 # Clone a tensor
-pub tensorClone(t) = __native__("Candle.clone", t)
+pub tensorClone(t: Tensor) -> Tensor = __native__("Candle.clone", t)
 
 # Get dtype as string ("f32", "f64", "u32", etc.)
-pub dtype(t) = __native__("Candle.dtype", t)
+pub dtype(t: Tensor) -> String = __native__("Candle.dtype", t)
 
 # =============================================================================
 # Neural Network Operations
 # =============================================================================
 
 # Layer normalization
-# layerNorm(x, gamma, beta) -> Normalized tensor
-# layerNorm(x, gamma, beta, eps) -> With custom epsilon
-pub layerNorm(x, gamma, beta) = __native__("Candle.layerNorm", x, gamma, beta)
-pub layerNormEps(x, gamma, beta, eps) = __native__("Candle.layerNorm", x, gamma, beta, eps)
+pub layerNorm(x: Tensor, gamma: Tensor, beta: Tensor) -> Tensor = __native__("Candle.layerNorm", x, gamma, beta)
+pub layerNormEps(x: Tensor, gamma: Tensor, beta: Tensor, eps: Float) -> Tensor = __native__("Candle.layerNorm", x, gamma, beta, eps)
 
 # Embedding lookup
-# embedding(indices, embeddings) -> Tensor
-# indices: [batch, seq_len] of integers
-# embeddings: [vocab_size, hidden_size]
-pub embedding(indices, embeddings) = __native__("Candle.embedding", indices, embeddings)
+pub embedding(indices: Tensor, embeddings: Tensor) -> Tensor = __native__("Candle.embedding", indices, embeddings)
 
 # Linear layer: x @ weight.T + bias
-# linear(x, weight) -> Tensor (no bias)
-# linear(x, weight, bias) -> Tensor (with bias)
-pub linear(x, weight) = __native__("Candle.linear", x, weight)
-pub linearBias(x, weight, bias) = __native__("Candle.linear", x, weight, bias)
+pub linear(x: Tensor, weight: Tensor) -> Tensor = __native__("Candle.linear", x, weight)
+pub linearBias(x: Tensor, weight: Tensor, bias: Tensor) -> Tensor = __native__("Candle.linear", x, weight, bias)
 
 # Dropout (inference mode - no-op)
-pub dropout(x, p) = __native__("Candle.dropout", x, p)
+pub dropout(x: Tensor, p: Float) -> Tensor = __native__("Candle.dropout", x, p)
 
 # =============================================================================
 # Model Loading (Safetensors)
 # =============================================================================
 
 # Load a safetensors file
-# loadSafetensors(path) -> TensorMap
-pub loadSafetensors(path) = __native__("Candle.loadSafetensors", path)
+pub loadSafetensors(path: String) -> TensorMap = __native__("Candle.loadSafetensors", path)
 
 # Get a tensor from a loaded model by name
-# getTensor(model, "layer.weight") -> Tensor
-pub getTensor(model, name) = __native__("Candle.getTensor", model, name)
+pub getTensor(model: TensorMap, name: String) -> Tensor = __native__("Candle.getTensor", model, name)
 
 # List all tensor names in a loaded model
-# listTensors(model) -> [String]
-pub listTensors(model) = __native__("Candle.listTensors", model)
+pub listTensors(model: TensorMap) -> List[String] = __native__("Candle.listTensors", model)
 
 # =============================================================================
 # Tokenizer
 # =============================================================================
 
 # Load a tokenizer from a JSON file (tokenizer.json from HuggingFace)
-# loadTokenizer(path) -> Tokenizer
-pub loadTokenizer(path) = __native__("Candle.loadTokenizer", path)
+pub loadTokenizer(path: String) -> Tokenizer = __native__("Candle.loadTokenizer", path)
 
 # Encode text to token IDs
-# encode(tokenizer, text) -> [Int]
-pub encode(tokenizer, text) = __native__("Candle.encode", tokenizer, text)
+pub encode(tokenizer: Tokenizer, text: String) -> List[Int] = __native__("Candle.encode", tokenizer, text)
 
 # Decode token IDs back to text
-# decode(tokenizer, ids) -> String
-pub decode(tokenizer, ids) = __native__("Candle.decode", tokenizer, ids)
+pub decode(tokenizer: Tokenizer, ids: List[Int]) -> String = __native__("Candle.decode", tokenizer, ids)
 
 # Get vocabulary size
-# vocabSize(tokenizer) -> Int
-pub vocabSize(tokenizer) = __native__("Candle.vocabSize", tokenizer)
+pub vocabSize(tokenizer: Tokenizer) -> Int = __native__("Candle.vocabSize", tokenizer)
 
 # =============================================================================
 # Attention Utilities
 # =============================================================================
 
 # Create attention mask from token IDs
-# createAttentionMask(tokenIds, padTokenId) -> Tensor [batch, 1, 1, seq]
-# Values: 0.0 for valid tokens, -inf for padding
-pub createAttentionMask(tokenIds, padTokenId) = __native__("Candle.createAttentionMask", tokenIds, padTokenId)
+pub createAttentionMask(tokenIds: Tensor, padTokenId: Int) -> Tensor = __native__("Candle.createAttentionMask", tokenIds, padTokenId)
 
 # Apply attention mask to attention scores
-# applyAttentionMask(scores, mask) -> Tensor
-pub applyAttentionMask(scores, mask) = __native__("Candle.applyAttentionMask", scores, mask)
+pub applyAttentionMask(scores: Tensor, mask: Tensor) -> Tensor = __native__("Candle.applyAttentionMask", scores, mask)
 
 # =============================================================================
 # ModernBERT Operations
 # =============================================================================
 
 # Apply Rotary Position Embeddings (RoPE)
-# applyRope(x, cos, sin) -> Tensor
-# x: [batch, seq, heads, head_dim] or [batch, heads, seq, head_dim]
-# cos, sin: [seq, head_dim] precomputed frequencies
-pub applyRope(x, cos, sin) = __native__("Candle.applyRope", x, cos, sin)
+pub applyRope(x: Tensor, cos: Tensor, sin: Tensor) -> Tensor = __native__("Candle.applyRope", x, cos, sin)
 
 # GeGLU activation for MLP
-# geglu(gate, up) -> GELU(gate) * up
-# Used in ModernBERT: output = GELU(x @ W_gate) * (x @ W_up)
-pub geglu(gate, up) = __native__("Candle.geglu", gate, up)
+pub geglu(gate: Tensor, up: Tensor) -> Tensor = __native__("Candle.geglu", gate, up)
 
 # RMS Normalization (alternative to LayerNorm)
-# rmsNorm(x, weight) -> Tensor
-# rmsNorm(x, weight, eps) -> With custom epsilon
-pub rmsNorm(x, weight) = __native__("Candle.rmsNorm", x, weight)
-pub rmsNormEps(x, weight, eps) = __native__("Candle.rmsNorm", x, weight, eps)
+pub rmsNorm(x: Tensor, weight: Tensor) -> Tensor = __native__("Candle.rmsNorm", x, weight)
+pub rmsNormEps(x: Tensor, weight: Tensor, eps: Float) -> Tensor = __native__("Candle.rmsNorm", x, weight, eps)
 
 # Create local attention mask (sliding window)
-# localAttentionMask(seqLen, windowSize) -> Tensor [1, 1, seq, seq]
-# Returns 0.0 within window, -inf outside window
-pub localAttentionMask(seqLen, windowSize) = __native__("Candle.localAttentionMask", seqLen, windowSize)
+pub localAttentionMask(seqLen: Int, windowSize: Int) -> Tensor = __native__("Candle.localAttentionMask", seqLen, windowSize)
 
 # Cast tensor to different dtype
-# cast(tensor, "f32") -> Tensor
-pub cast(t, dtype) = __native__("Candle.cast", t, dtype)
+pub cast(t: Tensor, dtype: String) -> Tensor = __native__("Candle.cast", t, dtype)
 
 # SiLU activation (Swish): x * sigmoid(x)
-pub silu(t) = __native__("Candle.silu", t)
+pub silu(t: Tensor) -> Tensor = __native__("Candle.silu", t)
 
 # Compute RoPE frequencies
-# ropeFreqs(seqLen, headDim, theta) -> [cos, sin]
-# Returns list of two tensors: cos and sin, each of shape [seqLen, headDim]
-pub ropeFreqs(seqLen, headDim, theta) = __native__("Candle.ropeFreqs", seqLen, headDim, theta)
+pub ropeFreqs(seqLen: Int, headDim: Int, theta: Float) -> List[Tensor] = __native__("Candle.ropeFreqs", seqLen, headDim, theta)

@@ -1,0 +1,74 @@
+# Traits with Extension Types Example
+# Demonstrates traits working with records containing extension types
+
+use candle.*
+
+# Define a model record with extension types
+type Model = { name: String, weights: TensorMap }
+
+# A trait for loadable resources
+trait Loadable
+    load(self) -> String
+end
+
+# Implement trait for Model
+Model: Loadable
+    load(self) = "Loaded model: " ++ self.name
+end
+
+# A helper function that trait impls can call
+formatSize(n: Int) -> String = "Size: " ++ show(n)
+
+# Another trait demonstrating trait impls can call top-level functions
+trait Describable
+    describe(self) -> String
+end
+
+Model: Describable
+    describe(self) = {
+        # Call a top-level function from trait impl (previously a bug)
+        size = formatSize(30522)
+        "Model '" ++ self.name ++ "' - " ++ size
+    }
+end
+
+# Show trait for custom display
+trait Showable
+    display(self) -> String
+end
+
+Model: Showable
+    display(self) = {
+        tensors = listTensors(self.weights)
+        count = length(tensors)
+        "Model(name=" ++ self.name ++ ", tensors=" ++ show(count) ++ ")"
+    }
+end
+
+main() = {
+    println("=== Traits with Extension Types ===")
+    println("")
+
+    # Load model weights
+    println("Loading model weights...")
+    w = loadSafetensors("/home/petter/dev/rust/nostos-candle/models/bert-small.safetensors")
+
+    # Create model record with extension type
+    model = Model("bert-small", w)
+    println("Model created!")
+    println("")
+
+    # Call trait methods
+    println("Calling trait methods:")
+    println("  load():     " ++ model.load())
+    println("  describe(): " ++ model.describe())
+    println("  display():  " ++ model.display())
+    println("")
+
+    # Verify the weights work
+    embeds = getTensor(model.weights, "bert.embeddings.word_embeddings.weight")
+    println("Embedding tensor shape:")
+    println(tensorShape(embeds))
+
+    0
+}
