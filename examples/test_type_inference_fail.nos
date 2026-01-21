@@ -1,0 +1,21 @@
+# This file demonstrates the type inference bug
+# Run: nostos --use candle examples/test_type_inference_fail.nos
+# Expected: Type error about "if and else branches"
+
+use candle.*
+
+# Define a record type with a typed field for the native handle
+type TokenizerWrapper = { tok: Tokenizer }
+
+# This function triggers the bug
+wrapTokenizer() = {
+    t = loadTokenizer("/home/user/nostos-candle/models/modernbert-tokenizer.json")
+    TokenizerWrapper(t)
+}
+
+main() = {
+    w = wrapTokenizer()
+    ids = encode(w.tok, "hello")
+    println(ids)
+    0
+}

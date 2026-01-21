@@ -1,0 +1,87 @@
+# Minimal reproduction of type inference bug with native extension returns
+# Run: nostos --use candle examples/test_type_inference_bug.nos
+
+use candle.*
+
+# =============================================================================
+# CASE 1: Works - Extension values used directly without record types
+# =============================================================================
+
+testDirect() = {
+    println("=== CASE 1: Direct usage (works) ===")
+    tok = loadTokenizer("/home/user/nostos-candle/models/modernbert-tokenizer.json")
+    ids = encode(tok, "hello")
+    println("Token IDs: ")
+    println(ids)
+    println("OK\n")
+}
+
+# =============================================================================
+# CASE 2: Works - Extension values in untyped function
+# =============================================================================
+
+getTokens(text) = {
+    tok = loadTokenizer("/home/user/nostos-candle/models/modernbert-tokenizer.json")
+    encode(tok, text)
+}
+
+testFunction() = {
+    println("=== CASE 2: Via function (works) ===")
+    ids = getTokens("hello")
+    println("Token IDs: ")
+    println(ids)
+    println("OK\n")
+}
+
+# =============================================================================
+# CASE 3: FAILS - Extension values in typed record fields
+# =============================================================================
+
+# This type definition causes problems:
+# type Model = { tokenizer: Tokenizer, weights: Safetensors }
+
+# When we try to use it:
+# loadModel() = {
+#     tok = loadTokenizer("...")      # Returns native Tokenizer handle
+#     w = loadSafetensors("...")      # Returns native Safetensors handle
+#     Model(tok, w)                   # ERROR: type inference fails here
+# }
+
+# The error manifests as:
+# "if and else branches have incompatible types: String vs Tokenizer"
+# even though there's no if/else in the code!
+
+# =============================================================================
+# CASE 4: FAILS - Even simpler case with just one typed field
+# =============================================================================
+
+# Uncomment to see the error:
+# type TokenizerWrapper = { tok: Tokenizer }
+#
+# wrapTokenizer() = {
+#     t = loadTokenizer("/home/user/nostos-candle/models/modernbert-tokenizer.json")
+#     TokenizerWrapper(t)
+# }
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() = {
+    println("Testing type inference with native extension returns\n")
+
+    testDirect()
+    testFunction()
+
+    println("=== CASE 3 & 4: Commented out (would fail) ===")
+    println("See source code for the failing patterns")
+    println("")
+    println("The issue: When storing native extension returns (Tokenizer, Safetensors)")
+    println("in typed record fields, the type checker gets confused and reports")
+    println("spurious 'if and else branches have incompatible types' errors.")
+    println("")
+    println("Workaround: Don't use typed record fields for extension values.")
+    println("Instead, pass them as function parameters or use untyped variables.")
+
+    0
+}
