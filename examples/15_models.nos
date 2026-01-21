@@ -1,29 +1,24 @@
-# ModernBERT Model - Clean Implementation with Traits
-# Demonstrates: pub traits, string interpolation, fold, clean model interface
+# ModernBERT Model - Clean Implementation with String Interpolation and Fold
+# Demonstrates: string interpolation for weight names, fold for layer iteration
 # Run: nostos --use candle examples/15_models.nos
+#
+# NOTE: This example was intended to demonstrate trait-based model abstraction,
+# but Nostos currently has type inference issues with native extension returns
+# in record types. The trait-based approach is deferred until those are fixed.
+#
+# TODO: Re-enable traits once type inference is improved:
+# pub trait Model forward(self, tokens) encodeText(self, text) end
+# type ModernBertModel = { weights: Safetensors, tokenizer: Tokenizer, ... }
 
 use candle.*
 
 # =============================================================================
-# Model Trait (public so it can be used across modules)
+# Tokenization
 # =============================================================================
 
-pub trait Model
-    forward(self, tokens)
-    encodeText(self, text)
-end
-
-# =============================================================================
-# ModernBERT Model Type
-# =============================================================================
-
-type ModernBertModel = { weights: Safetensors, tokenizer: Tokenizer, hiddenSize: Int, numHeads: Int, headDim: Int, globalTheta: Float, localTheta: Float }
-
-# Constructor
-loadModernBert(modelPath, tokenizerPath) = {
-    w = loadSafetensors(modelPath)
-    t = loadTokenizer(tokenizerPath)
-    ModernBertModel(w, t, 768, 12, 64, 160000.0, 10000.0)
+getTokenIds(text) = {
+    tok = loadTokenizer("/home/user/nostos-candle/models/modernbert-tokenizer.json")
+    encode(tok, text)
 }
 
 # =============================================================================
@@ -102,88 +97,114 @@ modernBertMLP(x, wI, wO) = {
     linear(hidden, wO)
 }
 
-# Single layer using string interpolation for weight names
-modernBertLayer(x, weights, i, cos, sin, hiddenSize, numHeads, headDim) = {
-    zerosBias = zeros([hiddenSize])
-    headDimF = headDim * 1.0
+# Layer 0 has no attn_norm (embeddings are already normalized)
+modernBertLayer0(x, wQKV, wO, mlpNormW, wI, wO2, cos, sin, numHeads, headDimF, hidden) = {
+    attnOut = modernBertAttention(x, wQKV, wO, cos, sin, numHeads, headDimF)
+    hidden1 = tensorAdd(x, attnOut)
+    zerosBias = zeros([hidden])
+    mlpIn = layerNorm(hidden1, mlpNormW, zerosBias)
+    mlpOut = modernBertMLP(mlpIn, wI, wO2)
+    tensorAdd(hidden1, mlpOut)
+}
 
-    if i == 0 then {
-        # Layer 0 has no attn_norm
-        wQKV = getTensor(weights, "model.layers.0.attn.Wqkv.weight")
-        wO = getTensor(weights, "model.layers.0.attn.Wo.weight")
-        mlpNormW = getTensor(weights, "model.layers.0.mlp_norm.weight")
-        wI = getTensor(weights, "model.layers.0.mlp.Wi.weight")
-        wO2 = getTensor(weights, "model.layers.0.mlp.Wo.weight")
+# Layers 1-21 have attn_norm
+modernBertLayerN(x, attnNormW, wQKV, wO, mlpNormW, wI, wO2, cos, sin, numHeads, headDimF, hidden) = {
+    zerosBias = zeros([hidden])
+    attnIn = layerNorm(x, attnNormW, zerosBias)
+    attnOut = modernBertAttention(attnIn, wQKV, wO, cos, sin, numHeads, headDimF)
+    hidden1 = tensorAdd(x, attnOut)
+    mlpIn = layerNorm(hidden1, mlpNormW, zerosBias)
+    mlpOut = modernBertMLP(mlpIn, wI, wO2)
+    tensorAdd(hidden1, mlpOut)
+}
 
-        attnOut = modernBertAttention(x, wQKV, wO, cos, sin, numHeads, headDimF)
-        h1 = tensorAdd(x, attnOut)
-        mlpIn = layerNorm(h1, mlpNormW, zerosBias)
-        mlpOut = modernBertMLP(mlpIn, wI, wO2)
-        tensorAdd(h1, mlpOut)
+# =============================================================================
+# Generic Weight Loading (using string interpolation)
+# =============================================================================
+
+# Load weights for layer 0 (no attn_norm)
+loadLayer0Weights(model) = {
+    [
+        getTensor(model, "model.layers.0.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.0.attn.Wo.weight"),
+        getTensor(model, "model.layers.0.mlp_norm.weight"),
+        getTensor(model, "model.layers.0.mlp.Wi.weight"),
+        getTensor(model, "model.layers.0.mlp.Wo.weight")
+    ]
+}
+
+# Load weights for layers 1-21 (with attn_norm)
+loadLayerNWeights(model, i) = {
+    [
+        getTensor(model, "model.layers.${i}.attn_norm.weight"),
+        getTensor(model, "model.layers.${i}.attn.Wqkv.weight"),
+        getTensor(model, "model.layers.${i}.attn.Wo.weight"),
+        getTensor(model, "model.layers.${i}.mlp_norm.weight"),
+        getTensor(model, "model.layers.${i}.mlp.Wi.weight"),
+        getTensor(model, "model.layers.${i}.mlp.Wo.weight")
+    ]
+}
+
+# =============================================================================
+# Helper Functions
+# =============================================================================
+
+printFirst5CLS(x, suffix) = {
+    slice = narrow(narrow(x, 0, 0, 1), 1, 0, 1)
+    first = squeeze(squeeze(slice, 0), 0)
+    println("   First 5 values of CLS" ++ suffix ++ ":")
+    println(toList(narrow(first, 0, 0, 5)))
+}
+
+# Check if layer uses global attention (every 3rd: 0, 3, 6, 9, 12, 15, 18, 21)
+isGlobalLayer(i) = i % 3 == 0
+
+# =============================================================================
+# Forward Pass with Fold
+# =============================================================================
+
+runEmbeddings(tokenTensor, model) = {
+    tokEmb = getTensor(model, "model.embeddings.tok_embeddings.weight")
+    embNormW = getTensor(model, "model.embeddings.norm.weight")
+    embedded = embedding(tokenTensor, tokEmb)
+    println("1. Token Embeddings - Shape:")
+    println(tensorShape(embedded))
+    printFirst5CLS(embedded, "   (before norm)")
+    zerosBias = zeros([768])
+    embNormed = layerNorm(embedded, embNormW, zerosBias)
+    println("\n2. After Embedding Norm")
+    printFirst5CLS(embNormed, "")
+    embNormed
+}
+
+# Run a single layer (generic for any layer index)
+runSingleLayer(x, model, i, cosGlobal, sinGlobal, cosLocal, sinLocal) = {
+    isGlobal = isGlobalLayer(i)
+    cos = if isGlobal then cosGlobal else cosLocal
+    sin = if isGlobal then sinGlobal else sinLocal
+    attnType = if isGlobal then "global" else "local"
+
+    result = if i == 0 then {
+        weights = loadLayer0Weights(model)
+        modernBertLayer0(x, weights[0], weights[1], weights[2], weights[3], weights[4], cos, sin, 12, 64.0, 768)
     } else {
-        # Layers 1-21 use string interpolation for weight names
-        attnNormW = getTensor(weights, "model.layers.${i}.attn_norm.weight")
-        wQKV = getTensor(weights, "model.layers.${i}.attn.Wqkv.weight")
-        wO = getTensor(weights, "model.layers.${i}.attn.Wo.weight")
-        mlpNormW = getTensor(weights, "model.layers.${i}.mlp_norm.weight")
-        wI = getTensor(weights, "model.layers.${i}.mlp.Wi.weight")
-        wO2 = getTensor(weights, "model.layers.${i}.mlp.Wo.weight")
-
-        attnIn = layerNorm(x, attnNormW, zerosBias)
-        attnOut = modernBertAttention(attnIn, wQKV, wO, cos, sin, numHeads, headDimF)
-        h1 = tensorAdd(x, attnOut)
-        mlpIn = layerNorm(h1, mlpNormW, zerosBias)
-        mlpOut = modernBertMLP(mlpIn, wI, wO2)
-        tensorAdd(h1, mlpOut)
+        weights = loadLayerNWeights(model, i)
+        modernBertLayerN(x, weights[0], weights[1], weights[2], weights[3], weights[4], weights[5], cos, sin, 12, 64.0, 768)
     }
+
+    stepNum = i + 3
+    println("\n${stepNum}. After Layer ${i} (${attnType})")
+    printFirst5CLS(result, "")
+    result
 }
 
-# Run all 22 layers using fold
-runAllLayers(x, weights, cosGlobal, sinGlobal, cosLocal, sinLocal, hiddenSize, numHeads, headDim) = {
+# Run all 22 layers using fold over a list of indices
+runAllLayersFold(x, model, cosGlobal, sinGlobal, cosLocal, sinLocal) = {
+    # Create list of layer indices [0, 1, 2, ..., 21]
     indices = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
-    indices.fold(x, (h, i) => {
-        isGlobal = i % 3 == 0
-        cos = if isGlobal then cosGlobal else cosLocal
-        sin = if isGlobal then sinGlobal else sinLocal
-        modernBertLayer(h, weights, i, cos, sin, hiddenSize, numHeads, headDim)
-    })
-}
 
-# =============================================================================
-# Model Trait Implementation
-# =============================================================================
-
-ModernBertModel: Model
-    encodeText(self, text) = encode(self.tokenizer, text)
-
-    forward(self, tokens) = {
-        tokenTensor = unsqueeze(fromIntList(tokens), 0)
-        seqLen = length(tokens)
-
-        # Embeddings
-        tokEmb = getTensor(self.weights, "model.embeddings.tok_embeddings.weight")
-        embNormW = getTensor(self.weights, "model.embeddings.norm.weight")
-        zerosBias = zeros([self.hiddenSize])
-
-        embedded = embedding(tokenTensor, tokEmb)
-        x = layerNorm(embedded, embNormW, zerosBias)
-
-        # Compute RoPE frequencies
-        ropeGlobal = ropeFreqs(seqLen, self.headDim, self.globalTheta)
-        ropeLocal = ropeFreqs(seqLen, self.headDim, self.localTheta)
-
-        # Run all 22 layers using fold
-        runAllLayers(x, self.weights, ropeGlobal[0], ropeGlobal[1], ropeLocal[0], ropeLocal[1], self.hiddenSize, self.numHeads, self.headDim)
-    }
-end
-
-# =============================================================================
-# Generic Inference (works with any Model)
-# =============================================================================
-
-infer(model, text) = {
-    tokens = model.encodeText(text)
-    model.forward(tokens)
+    # Fold over indices, threading the hidden state through
+    indices.fold(x, (hidden, i) => runSingleLayer(hidden, model, i, cosGlobal, sinGlobal, cosLocal, sinLocal))
 }
 
 # =============================================================================
@@ -191,38 +212,44 @@ infer(model, text) = {
 # =============================================================================
 
 main() = {
-    println("=== ModernBERT with Trait-Based Model Abstraction ===")
-    println("Demonstrates: pub trait, string interpolation, fold\n")
+    println("=== ModernBERT Refactored (22 Layers with Fold) ===")
+    println("Model: answerdotai/ModernBERT-base\n")
 
-    # Load model using constructor
-    println("Loading ModernBERT...")
-    model = loadModernBert(
-        "/home/user/nostos-candle/models/modernbert-base.safetensors",
-        "/home/user/nostos-candle/models/modernbert-tokenizer.json"
-    )
-    println("Model loaded!\n")
+    # Tokenize
+    testText = "hello world"
+    println("Input: \"" ++ testText ++ "\"")
+    tokenIds = getTokenIds(testText)
+    println("Token IDs:")
+    println(tokenIds)
 
-    # Run inference using trait methods
-    text = "hello world"
-    println("Input: \"" ++ text ++ "\"")
-    tokens = model.encodeText(text)
-    println("Tokens:")
-    println(tokens)
+    # Convert to tensor
+    tokenTensor = unsqueeze(fromIntList(tokenIds), 0)
+    println("Token tensor shape:")
+    println(tensorShape(tokenTensor))
+    seqLen = (tensorShape(tokenTensor))[1]
 
-    output = infer(model, text)
+    # Load model
+    println("\nLoading safetensors...")
+    model = loadSafetensors("/home/user/nostos-candle/models/modernbert-base.safetensors")
+    println("Model loaded!")
 
-    println("\nOutput shape:")
-    println(tensorShape(output))
+    # Compute RoPE frequencies
+    println("Computing RoPE frequencies...")
+    ropeGlobal = ropeFreqs(seqLen, 64, 160000.0)
+    ropeLocal = ropeFreqs(seqLen, 64, 10000.0)
+    println("RoPE computed!\n")
 
-    # Print first 5 values of CLS token
-    slice = narrow(narrow(output, 0, 0, 1), 1, 0, 1)
-    first = squeeze(squeeze(slice, 0), 0)
-    vals = toList(narrow(first, 0, 0, 5))
-    println("\nFirst 5 values of CLS:")
-    println(vals)
+    # Forward pass
+    println("--- Forward Pass (All 22 Layers) ---\n")
 
-    println("\nExpected (HuggingFace): [7.2328, -2.4966, 14.072, -0.492, -5.619]")
+    # Embeddings
+    embNormed = runEmbeddings(tokenTensor, model)
 
-    println("\n=== Done ===")
+    # All 22 layers using fold
+    finalOutput = runAllLayersFold(embNormed, model, ropeGlobal[0], ropeGlobal[1], ropeLocal[0], ropeLocal[1])
+
+    println("\n=== ModernBERT Refactored Complete ===")
+    println("Successfully ran all 22 layers with fold!")
+
     0
 }
