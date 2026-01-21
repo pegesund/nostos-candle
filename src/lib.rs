@@ -17,85 +17,90 @@ const TENSOR_MAP_TYPE_ID: u64 = 2;
 const TOKENIZER_TYPE_ID: u64 = 3;
 
 fn register(reg: &mut ExtRegistry) {
-    // Tensor creation
-    reg.add("Candle.zeros", tensor_zeros);
-    reg.add("Candle.ones", tensor_ones);
-    reg.add("Candle.randn", tensor_randn);
-    reg.add("Candle.fromList", tensor_from_list);
-    reg.add("Candle.fromIntList", tensor_from_int_list);
-    reg.add("Candle.arange", tensor_arange);
+    // === Declare opaque types ===
+    reg.add_opaque_type("Tensor");
+    reg.add_opaque_type("TensorMap");  // Safetensors loaded model
+    reg.add_opaque_type("Tokenizer");
 
-    // Binary operations
-    reg.add("Candle.add", tensor_add);
-    reg.add("Candle.sub", tensor_sub);
-    reg.add("Candle.mul", tensor_mul);
-    reg.add("Candle.div", tensor_div);
-    reg.add("Candle.matmul", tensor_matmul);
-    reg.add("Candle.pow", tensor_pow);
+    // === Tensor creation ===
+    reg.add_fn("Candle.zeros", "(List[Int]) -> Tensor", tensor_zeros);
+    reg.add_fn("Candle.ones", "(List[Int]) -> Tensor", tensor_ones);
+    reg.add_fn("Candle.randn", "(List[Int]) -> Tensor", tensor_randn);
+    reg.add_fn("Candle.fromList", "(List[Float]) -> Tensor", tensor_from_list);
+    reg.add_fn("Candle.fromIntList", "(List[Int]) -> Tensor", tensor_from_int_list);
+    reg.add_fn("Candle.arange", "(Int) -> Tensor", tensor_arange);
 
-    // Unary operations
-    reg.add("Candle.exp", tensor_exp);
-    reg.add("Candle.log", tensor_log);
-    reg.add("Candle.sqrt", tensor_sqrt);
-    reg.add("Candle.tanh", tensor_tanh);
-    reg.add("Candle.relu", tensor_relu);
-    reg.add("Candle.gelu", tensor_gelu);
-    reg.add("Candle.softmax", tensor_softmax);
-    reg.add("Candle.neg", tensor_neg);
-    reg.add("Candle.cos", tensor_cos);
-    reg.add("Candle.sin", tensor_sin);
+    // === Binary operations ===
+    reg.add_fn("Candle.add", "(Tensor, Tensor) -> Tensor", tensor_add);
+    reg.add_fn("Candle.sub", "(Tensor, Tensor) -> Tensor", tensor_sub);
+    reg.add_fn("Candle.mul", "(Tensor, Tensor) -> Tensor", tensor_mul);
+    reg.add_fn("Candle.div", "(Tensor, Tensor) -> Tensor", tensor_div);
+    reg.add_fn("Candle.matmul", "(Tensor, Tensor) -> Tensor", tensor_matmul);
+    reg.add_fn("Candle.pow", "(Tensor, Float) -> Tensor", tensor_pow);
 
-    // Shape operations
-    reg.add("Candle.reshape", tensor_reshape);
-    reg.add("Candle.transpose", tensor_transpose);
-    reg.add("Candle.squeeze", tensor_squeeze);
-    reg.add("Candle.unsqueeze", tensor_unsqueeze);
-    reg.add("Candle.cat", tensor_cat);
-    reg.add("Candle.narrow", tensor_narrow);
-    reg.add("Candle.indexSelect", tensor_index_select);
-    reg.add("Candle.contiguous", tensor_contiguous);
+    // === Unary operations ===
+    reg.add_fn("Candle.exp", "(Tensor) -> Tensor", tensor_exp);
+    reg.add_fn("Candle.log", "(Tensor) -> Tensor", tensor_log);
+    reg.add_fn("Candle.sqrt", "(Tensor) -> Tensor", tensor_sqrt);
+    reg.add_fn("Candle.tanh", "(Tensor) -> Tensor", tensor_tanh);
+    reg.add_fn("Candle.relu", "(Tensor) -> Tensor", tensor_relu);
+    reg.add_fn("Candle.gelu", "(Tensor) -> Tensor", tensor_gelu);
+    reg.add_fn("Candle.softmax", "(Tensor, Int) -> Tensor", tensor_softmax);
+    reg.add_fn("Candle.neg", "(Tensor) -> Tensor", tensor_neg);
+    reg.add_fn("Candle.cos", "(Tensor) -> Tensor", tensor_cos);
+    reg.add_fn("Candle.sin", "(Tensor) -> Tensor", tensor_sin);
 
-    // Reductions
-    reg.add("Candle.sum", tensor_sum);
-    reg.add("Candle.mean", tensor_mean);
-    reg.add("Candle.argmax", tensor_argmax);
-    reg.add("Candle.var", tensor_var);
+    // === Shape operations ===
+    reg.add_fn("Candle.reshape", "(Tensor, List[Int]) -> Tensor", tensor_reshape);
+    reg.add_fn("Candle.transpose", "(Tensor, Int, Int) -> Tensor", tensor_transpose);
+    reg.add_fn("Candle.squeeze", "(Tensor, Int) -> Tensor", tensor_squeeze);
+    reg.add_fn("Candle.unsqueeze", "(Tensor, Int) -> Tensor", tensor_unsqueeze);
+    reg.add_fn("Candle.cat", "(List[Tensor], Int) -> Tensor", tensor_cat);
+    reg.add_fn("Candle.narrow", "(Tensor, Int, Int, Int) -> Tensor", tensor_narrow);
+    reg.add_fn("Candle.indexSelect", "(Tensor, Int, Tensor) -> Tensor", tensor_index_select);
+    reg.add_fn("Candle.contiguous", "(Tensor) -> Tensor", tensor_contiguous);
 
-    // Tensor info
-    reg.add("Candle.shape", tensor_shape);
-    reg.add("Candle.toList", tensor_to_list);
-    reg.add("Candle.clone", tensor_clone);
-    reg.add("Candle.dtype", tensor_dtype);
+    // === Reductions ===
+    reg.add_fn("Candle.sum", "(Tensor) -> Tensor", tensor_sum);
+    reg.add_fn("Candle.mean", "(Tensor) -> Tensor", tensor_mean);
+    reg.add_fn("Candle.argmax", "(Tensor, Int) -> Tensor", tensor_argmax);
+    reg.add_fn("Candle.var", "(Tensor, Int) -> Tensor", tensor_var);
 
-    // Neural network operations
-    reg.add("Candle.layerNorm", layer_norm);
-    reg.add("Candle.embedding", embedding_lookup);
-    reg.add("Candle.linear", linear);
-    reg.add("Candle.dropout", dropout);
+    // === Tensor info ===
+    reg.add_fn("Candle.shape", "(Tensor) -> List[Int]", tensor_shape);
+    reg.add_fn("Candle.toList", "(Tensor) -> List[Float]", tensor_to_list);
+    reg.add_fn("Candle.clone", "(Tensor) -> Tensor", tensor_clone);
+    reg.add_fn("Candle.dtype", "(Tensor) -> String", tensor_dtype);
 
-    // Model loading
-    reg.add("Candle.loadSafetensors", load_safetensors);
-    reg.add("Candle.getTensor", get_tensor_from_map);
-    reg.add("Candle.listTensors", list_tensors);
+    // === Neural network operations ===
+    reg.add_fn("Candle.layerNorm", "(Tensor, Tensor, Tensor) -> Tensor", layer_norm);
+    reg.add_fn("Candle.embedding", "(Tensor, Tensor) -> Tensor", embedding_lookup);
+    reg.add_fn("Candle.linear", "(Tensor, Tensor) -> Tensor", linear);
+    reg.add_fn("Candle.dropout", "(Tensor, Float) -> Tensor", dropout);
 
-    // Tokenizer
-    reg.add("Candle.loadTokenizer", load_tokenizer);
-    reg.add("Candle.encode", tokenizer_encode);
-    reg.add("Candle.decode", tokenizer_decode);
-    reg.add("Candle.vocabSize", tokenizer_vocab_size);
+    // === Model loading ===
+    reg.add_fn("Candle.loadSafetensors", "(String) -> TensorMap", load_safetensors);
+    reg.add_fn("Candle.getTensor", "(TensorMap, String) -> Tensor", get_tensor_from_map);
+    reg.add_fn("Candle.listTensors", "(TensorMap) -> List[String]", list_tensors);
 
-    // Attention utilities
-    reg.add("Candle.createAttentionMask", create_attention_mask);
-    reg.add("Candle.applyAttentionMask", apply_attention_mask);
+    // === Tokenizer ===
+    reg.add_fn("Candle.loadTokenizer", "(String) -> Tokenizer", load_tokenizer);
+    reg.add_fn("Candle.encode", "(Tokenizer, String) -> List[Int]", tokenizer_encode);
+    reg.add_fn("Candle.decode", "(Tokenizer, List[Int]) -> String", tokenizer_decode);
+    reg.add_fn("Candle.vocabSize", "(Tokenizer) -> Int", tokenizer_vocab_size);
 
-    // ModernBERT operations
-    reg.add("Candle.applyRope", apply_rope);
-    reg.add("Candle.geglu", geglu);
-    reg.add("Candle.rmsNorm", rms_norm);
-    reg.add("Candle.localAttentionMask", local_attention_mask);
-    reg.add("Candle.cast", tensor_cast);
-    reg.add("Candle.silu", tensor_silu);
-    reg.add("Candle.ropeFreqs", rope_frequencies);
+    // === Attention utilities ===
+    reg.add_fn("Candle.createAttentionMask", "(Tensor, Int) -> Tensor", create_attention_mask);
+    reg.add_fn("Candle.applyAttentionMask", "(Tensor, Tensor) -> Tensor", apply_attention_mask);
+
+    // === ModernBERT operations ===
+    reg.add_fn("Candle.applyRope", "(Tensor, Tensor, Tensor) -> Tensor", apply_rope);
+    reg.add_fn("Candle.geglu", "(Tensor, Tensor) -> Tensor", geglu);
+    reg.add_fn("Candle.rmsNorm", "(Tensor, Tensor) -> Tensor", rms_norm);
+    reg.add_fn("Candle.localAttentionMask", "(Int, Int) -> Tensor", local_attention_mask);
+    reg.add_fn("Candle.cast", "(Tensor, String) -> Tensor", tensor_cast);
+    reg.add_fn("Candle.silu", "(Tensor) -> Tensor", tensor_silu);
+    reg.add_fn("Candle.ropeFreqs", "(Int, Int, Float) -> List[Tensor]", rope_frequencies);
 }
 
 // Type ID for tensors in GcNativeHandle
