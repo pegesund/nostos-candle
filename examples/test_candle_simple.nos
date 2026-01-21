@@ -1,0 +1,10 @@
+# Simple candle test
+
+use candle.*
+
+main() = {
+    t = fromList([1.0, 2.0, 3.0])
+    println("Tensor created!")
+    println(tensorShape(t))
+    0
+}

@@ -1,0 +1,24 @@
+# Test that trait methods can now call external functions
+
+use candle.*
+
+# External helper function
+addTen(x) = x + 10
+
+# Type and trait
+type Counter = { value: Int }
+
+pub trait Incrementable
+    increment(self) -> Int
+end
+
+Counter: Incrementable
+    increment(self) = addTen(self.value)
+end
+
+main() = {
+    c = Counter(5)
+    result = c.increment()
+    println("Result (expected 15): " ++ show(result))
+    result
+}
