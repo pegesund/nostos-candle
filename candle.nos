@@ -385,12 +385,36 @@ pub trainStep(opt: Optimizer, loss: Tensor) -> Float = __native__("Candle.trainS
 pub countEqual(a: Tensor, b: Tensor) -> Int = __native__("Candle.countEqual", a, b)
 
 # =============================================================================
-# Convenience Helpers
+# Indexing & Slicing
 # =============================================================================
+#
+# Readable alternatives to Python's cryptic [:, -1, :] syntax.
+# Only name the dimension you operate on — the rest stay untouched.
+#
+#   Python                   Nostos
+#   hidden[:, -1, :]         hidden.lastOf(1)
+#   hidden[:, 0, :]          hidden.firstOf(1)
+#   hidden[:, 3, :]          hidden.pick(1, 3)
+#   images[100:132, :, :]    images.sliceDim(0, 100, 32)
 
-# Select the last slice along a dimension and squeeze it out.
-# Example: lastDim(hidden, 1) on [batch, 28, 128] -> [batch, 128]
-pub lastDim(t: Tensor, dim: Int) -> Tensor = {
+# Pick a single element along a dimension, removing that dimension.
+# Supports negative indices: -1 = last, -2 = second-to-last, etc.
+#   t.pick(1, 3)   on [2, 5, 4] -> [2, 4]   (element 3 of dim 1)
+#   t.pick(0, -1)  on [2, 5, 4] -> [5, 4]   (last element of dim 0)
+pub pick(t: Tensor, dim: Int, idx: Int) -> Tensor = {
     n = tensorShape(t)[dim]
-    squeeze(narrow(t, dim, n - 1, 1), dim)
+    i = if idx < 0 { n + idx } else { idx }
+    squeeze(narrow(t, dim, i, 1), dim)
 }
+
+# Pick the first element along a dimension, removing that dimension.
+#   hidden.firstOf(1)  on [batch, 28, 128] -> [batch, 128]
+pub firstOf(t: Tensor, dim: Int) -> Tensor = pick(t, dim, 0)
+
+# Pick the last element along a dimension, removing that dimension.
+#   hidden.lastOf(1)  on [batch, 28, 128] -> [batch, 128]
+pub lastOf(t: Tensor, dim: Int) -> Tensor = pick(t, dim, -1)
+
+# Slice a range along a dimension, keeping that dimension.
+#   images.sliceDim(0, 100, 32)  on [60000, 28, 28] -> [32, 28, 28]
+pub sliceDim(t: Tensor, dim: Int, start: Int, len: Int) -> Tensor = narrow(t, dim, start, len)
