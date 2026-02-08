@@ -1,0 +1,43 @@
+# Verify that attention weights are updated by backpropagation.
+# If gradients flow through attention, wQ/wK/wV/wO should change after training.
+use candle.*
+
+main() = {
+    params = paramMapCreate()
+
+    # Create a small trainable LSTM + attention
+    lstm = lstmTrainable(params, "lstm", 4, 8)
+    wQ = paramRandn(params, "wQ", [8, 8])
+    wK = paramRandn(params, "wK", [8, 8])
+    wV = paramRandn(params, "wV", [8, 8])
+    wO = paramRandn(params, "wO", [8, 8])
+
+    # Snapshot attention weights before training
+    wQ_before = toList(wQ)
+
+    opt = adam(params, 0.01)
+
+    # Dummy input [1, 3, 4] and target [1, 3, 8]
+    input = randn([1, 3, 4])
+    target = randn([1, 3, 8])
+
+    # Train a few steps
+    var i = 0
+    while i < 5 {
+        output = lstmAttention(lstm, input, 2, wQ, wK, wV, wO)
+        loss = mseLoss(output, target)
+        lv = trainStep(opt, loss)
+        println("step " ++ show(i) ++ " loss: " ++ show(lv))
+        i = i + 1
+    }
+
+    # Check: did wQ change?
+    wQ_after = toList(wQ)
+
+    if wQ_before == wQ_after {
+        println("FAIL: wQ did not change - gradients not flowing through attention!")
+    } else {
+        println("PASS: wQ changed - backprop works through attention layer")
+    }
+    0
+}
