@@ -23,6 +23,20 @@ Optimizer: Adam (lr=0.001), batch size 128, 3 epochs.
 
 Expected result: **~97% test accuracy** in both languages.
 
+## Tip: Implicit Type Conversions
+
+When writing candle code, you can pass `List[Float]` directly where a `Tensor` is expected. The compiler auto-inserts the conversion:
+
+```nostos
+# Instead of:
+loss = mseLoss(w, tensorFromList([5.0]))
+
+# Just write:
+loss = mseLoss(w, [5.0])
+```
+
+This MNIST tutorial loads data from safetensors files (already tensors), so it doesn't use this feature much, but it's very handy for quick experiments and simple training scripts.
+
 ## Prerequisites
 
 - **Nostos** with the `candle` extension installed at `~/.nostos/extensions/candle/`
