@@ -4,8 +4,10 @@
 
 use candle_core::{DType, Device, Tensor};
 use candle_nn::rnn::{LSTM, LSTMConfig, LSTMState, RNN};
-use candle_nn::VarBuilder;
+use candle_nn::optim::{AdamW, Optimizer as CandleOptimizer, ParamsAdamW, SGD};
+use candle_nn::{loss, VarBuilder, VarMap};
 use nostos_extension::*;
+use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokenizers::Tokenizer;
@@ -24,6 +26,12 @@ const LSTM_TYPE_ID: u64 = 4;
 // Type ID for LSTM states (hidden + cell)
 const LSTM_STATE_TYPE_ID: u64 = 5;
 
+// Type ID for parameter maps (VarMap - trainable parameter collection)
+const PARAM_MAP_TYPE_ID: u64 = 6;
+
+// Type ID for optimizers (SGD or AdamW)
+const OPTIMIZER_TYPE_ID: u64 = 7;
+
 fn register(reg: &mut ExtRegistry) {
     // === Declare opaque types ===
     reg.add_opaque_type("Tensor");
@@ -31,6 +39,8 @@ fn register(reg: &mut ExtRegistry) {
     reg.add_opaque_type("Tokenizer");
     reg.add_opaque_type("LSTM");
     reg.add_opaque_type("LSTMState");
+    reg.add_opaque_type("ParamMap");
+    reg.add_opaque_type("Optimizer");
 
     // === Tensor creation ===
     reg.add_fn("Candle.zeros", "(List[Int]) -> Tensor", tensor_zeros);
@@ -131,6 +141,30 @@ fn register(reg: &mut ExtRegistry) {
     reg.add_fn("Candle.sigmoid", "(Tensor) -> Tensor", tensor_sigmoid);
     reg.add_fn("Candle.randUniform", "(List[Int]) -> Tensor", tensor_rand_uniform);
     reg.add_fn("Candle.gtScalar", "(Tensor, Float) -> Tensor", tensor_gt_scalar);
+
+    // === Training: Parameter Map ===
+    reg.add_fn("Candle.paramMapCreate", "() -> ParamMap", param_map_create);
+    reg.add_fn("Candle.paramRandn", "(ParamMap, String, List[Int]) -> Tensor", param_randn);
+    reg.add_fn("Candle.paramZeros", "(ParamMap, String, List[Int]) -> Tensor", param_zeros);
+    reg.add_fn("Candle.paramSave", "(ParamMap, String) -> Int", param_save);
+    reg.add_fn("Candle.paramLoad", "(ParamMap, String) -> Int", param_load);
+
+    // === Training: Trainable LSTM ===
+    reg.add_fn("Candle.lstmTrainable", "(ParamMap, String, Int, Int) -> LSTM", lstm_trainable);
+
+    // === Training: Optimizers ===
+    reg.add_fn("Candle.sgd", "(ParamMap, Float) -> Optimizer", optimizer_sgd);
+    reg.add_fn("Candle.adam", "(ParamMap, Float) -> Optimizer", optimizer_adam);
+    reg.add_fn("Candle.adamFull", "(ParamMap, Float, Float, Float, Float, Float) -> Optimizer", optimizer_adam_full);
+    reg.add_fn("Candle.setLearningRate", "(Optimizer, Float) -> Int", optimizer_set_lr);
+
+    // === Training: Loss Functions ===
+    reg.add_fn("Candle.mseLoss", "(Tensor, Tensor) -> Tensor", loss_mse);
+    reg.add_fn("Candle.crossEntropyLoss", "(Tensor, Tensor) -> Tensor", loss_cross_entropy);
+
+    // === Training: Backward + Step ===
+    reg.add_fn("Candle.trainStep", "(Optimizer, Tensor) -> Float", train_step);
+    reg.add_fn("Candle.backward", "(Tensor) -> Int", backward);
 }
 
 // Type ID for tensors in GcNativeHandle
@@ -1437,6 +1471,240 @@ fn tensor_gt_scalar(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> 
     Ok(tensor_to_value(mask_f32))
 }
 
+// ==================== Training: Opaque Type Helpers ====================
+
+// Optimizer enum (Optimizer trait is not object-safe)
+enum OptimizerKind {
+    Sgd(SGD),
+    Adam(AdamW),
+}
+
+impl OptimizerKind {
+    fn backward_step(&mut self, loss: &Tensor) -> Result<(), String> {
+        match self {
+            OptimizerKind::Sgd(o) => o.backward_step(loss).map_err(|e| e.to_string()),
+            OptimizerKind::Adam(o) => o.backward_step(loss).map_err(|e| e.to_string()),
+        }
+    }
+
+    fn set_learning_rate(&mut self, lr: f64) {
+        match self {
+            OptimizerKind::Sgd(o) => o.set_learning_rate(lr),
+            OptimizerKind::Adam(o) => o.set_learning_rate(lr),
+        }
+    }
+}
+
+// ParamMap cleanup (wraps Mutex<VarMap> for interior mutability)
+fn param_map_cleanup(ptr: usize, type_id: u64) {
+    if type_id == PARAM_MAP_TYPE_ID && ptr != 0 {
+        unsafe {
+            let _ = Box::from_raw(ptr as *mut Mutex<VarMap>);
+        }
+    }
+}
+
+fn param_map_to_value(varmap: VarMap) -> Value {
+    Value::gc_handle(Box::new(Mutex::new(varmap)), PARAM_MAP_TYPE_ID, param_map_cleanup)
+}
+
+fn value_to_param_map(v: &Value) -> Result<&Mutex<VarMap>, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != PARAM_MAP_TYPE_ID {
+        return Err(format!("Expected ParamMap (type_id={}), got type_id={}", PARAM_MAP_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 {
+        return Err("ParamMap handle is null".to_string());
+    }
+    Ok(unsafe { &*(handle.ptr as *const Mutex<VarMap>) })
+}
+
+// Optimizer cleanup (wrapped in Mutex for interior mutability)
+fn optimizer_cleanup(ptr: usize, type_id: u64) {
+    if type_id == OPTIMIZER_TYPE_ID && ptr != 0 {
+        unsafe {
+            let _ = Box::from_raw(ptr as *mut Mutex<OptimizerKind>);
+        }
+    }
+}
+
+fn optimizer_to_value(opt: OptimizerKind) -> Value {
+    Value::gc_handle(Box::new(Mutex::new(opt)), OPTIMIZER_TYPE_ID, optimizer_cleanup)
+}
+
+fn value_to_optimizer(v: &Value) -> Result<&Mutex<OptimizerKind>, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != OPTIMIZER_TYPE_ID {
+        return Err(format!("Expected Optimizer (type_id={}), got type_id={}", OPTIMIZER_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 {
+        return Err("Optimizer handle is null".to_string());
+    }
+    Ok(unsafe { &*(handle.ptr as *const Mutex<OptimizerKind>) })
+}
+
+// ==================== Training: Parameter Map ====================
+
+/// Create an empty parameter map: paramMapCreate() -> ParamMap
+fn param_map_create(_args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    Ok(param_map_to_value(VarMap::new()))
+}
+
+/// Create a trainable tensor with random normal init: paramRandn(params, name, shape) -> Tensor
+fn param_randn(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let name = args[1].as_string()?;
+    let shape = value_to_shape(&args[2])?;
+
+    let varmap = varmap_mtx.lock();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
+    let var = vb.get_with_hints(
+        shape.as_slice(),
+        &name,
+        candle_nn::Init::Randn { mean: 0.0, stdev: 0.02 },
+    ).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(var))
+}
+
+/// Create a trainable tensor initialized to zeros: paramZeros(params, name, shape) -> Tensor
+fn param_zeros(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let name = args[1].as_string()?;
+    let shape = value_to_shape(&args[2])?;
+
+    let varmap = varmap_mtx.lock();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
+    let var = vb.get_with_hints(
+        shape.as_slice(),
+        &name,
+        candle_nn::Init::Const(0.0),
+    ).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(var))
+}
+
+/// Save parameters to safetensors: paramSave(params, path) -> 0
+fn param_save(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let path = args[1].as_string()?;
+    varmap_mtx.lock().save(&*path).map_err(|e| e.to_string())?;
+    Ok(Value::Int(0))
+}
+
+/// Load parameters from safetensors: paramLoad(params, path) -> 0
+fn param_load(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let path = args[1].as_string()?;
+    varmap_mtx.lock().load(&*path).map_err(|e| e.to_string())?;
+    Ok(Value::Int(0))
+}
+
+// ==================== Training: Trainable LSTM ====================
+
+/// Create LSTM with trainable weights registered in ParamMap
+fn lstm_trainable(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let prefix = args[1].as_string()?;
+    let input_dim = args[2].as_i64()? as usize;
+    let hidden_dim = args[3].as_i64()? as usize;
+
+    let varmap = varmap_mtx.lock();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
+    let vb = vb.pp(&*prefix);
+    let lstm = LSTM::new(input_dim, hidden_dim, LSTMConfig::default(), vb)
+        .map_err(|e| e.to_string())?;
+
+    Ok(lstm_to_value(lstm))
+}
+
+// ==================== Training: Optimizers ====================
+
+/// Create SGD optimizer: sgd(params, lr) -> Optimizer
+fn optimizer_sgd(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let lr = args[1].as_f64()?;
+    let vars = varmap_mtx.lock().all_vars();
+    let sgd = SGD::new(vars, lr).map_err(|e| e.to_string())?;
+    Ok(optimizer_to_value(OptimizerKind::Sgd(sgd)))
+}
+
+/// Create AdamW optimizer with defaults: adam(params, lr) -> Optimizer
+fn optimizer_adam(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let lr = args[1].as_f64()?;
+    let vars = varmap_mtx.lock().all_vars();
+    let params = ParamsAdamW {
+        lr,
+        ..ParamsAdamW::default()
+    };
+    let adam = AdamW::new(vars, params).map_err(|e| e.to_string())?;
+    Ok(optimizer_to_value(OptimizerKind::Adam(adam)))
+}
+
+/// Create AdamW optimizer with all params: adamFull(params, lr, beta1, beta2, eps, wd) -> Optimizer
+fn optimizer_adam_full(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let lr = args[1].as_f64()?;
+    let beta1 = args[2].as_f64()?;
+    let beta2 = args[3].as_f64()?;
+    let eps = args[4].as_f64()?;
+    let wd = args[5].as_f64()?;
+    let vars = varmap_mtx.lock().all_vars();
+    let params = ParamsAdamW { lr, beta1, beta2, eps, weight_decay: wd };
+    let adam = AdamW::new(vars, params).map_err(|e| e.to_string())?;
+    Ok(optimizer_to_value(OptimizerKind::Adam(adam)))
+}
+
+/// Set learning rate: setLearningRate(opt, lr) -> 0
+fn optimizer_set_lr(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let opt = value_to_optimizer(&args[0])?;
+    let lr = args[1].as_f64()?;
+    opt.lock().set_learning_rate(lr);
+    Ok(Value::Int(0))
+}
+
+// ==================== Training: Loss Functions ====================
+
+/// Mean squared error loss: mseLoss(pred, target) -> scalar Tensor
+fn loss_mse(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let pred = value_to_tensor(&args[0])?;
+    let target = value_to_tensor(&args[1])?;
+    let l = loss::mse(pred, target).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(l))
+}
+
+/// Cross-entropy loss: crossEntropyLoss(logits [N,C], targets [N]) -> scalar Tensor
+fn loss_cross_entropy(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let logits = value_to_tensor(&args[0])?;
+    let targets = value_to_tensor(&args[1])?;
+    let l = loss::cross_entropy(logits, targets).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(l))
+}
+
+// ==================== Training: Backward + Step ====================
+
+/// Training step (backward + optimizer step): trainStep(opt, loss) -> Float (loss value)
+fn train_step(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let opt = value_to_optimizer(&args[0])?;
+    let loss_tensor = value_to_tensor(&args[1])?;
+
+    // Get loss value before backward (backward may consume the graph)
+    let loss_val = loss_tensor.to_scalar::<f32>().map_err(|e| e.to_string())?;
+
+    // Backward pass + optimizer step
+    opt.lock().backward_step(loss_tensor)?;
+
+    Ok(Value::Float(loss_val as f64))
+}
+
+/// Compute backward pass (for debugging): backward(loss) -> 0
+fn backward(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let loss_tensor = value_to_tensor(&args[0])?;
+    let _grads = loss_tensor.backward().map_err(|e| e.to_string())?;
+    Ok(Value::Int(0))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1643,5 +1911,185 @@ mod tests {
         let data: Vec<f32> = t.flatten_all().unwrap().to_vec1().unwrap();
         // [[1,2,3],[4,5,6]] @ [[1,2],[3,4],[5,6]] = [[22,28],[49,64]]
         assert_eq!(data, vec![22.0, 28.0, 49.0, 64.0]);
+    }
+
+    // ==================== Training Tests ====================
+
+    #[test]
+    fn test_param_map_create() {
+        let ctx = make_ctx();
+        let pm = param_map_create(&[], &ctx).unwrap();
+        // Create a trainable parameter
+        let shape = Value::list(vec![Value::Int(3), Value::Int(4)]);
+        let t = param_randn(&[pm.clone(), Value::string("weight"), shape], &ctx).unwrap();
+        let tensor = value_to_tensor(&t).unwrap();
+        assert_eq!(tensor.dims(), &[3, 4]);
+        // Verify it's a variable (tracked for gradients)
+        assert!(tensor.is_variable());
+    }
+
+    #[test]
+    fn test_lstm_trainable() {
+        let ctx = make_ctx();
+        let pm = param_map_create(&[], &ctx).unwrap();
+        let lstm_val = lstm_trainable(
+            &[pm.clone(), Value::string("lstm"), Value::Int(10), Value::Int(20)],
+            &ctx,
+        ).unwrap();
+
+        // Forward pass should work
+        let input_shape = Value::list(vec![Value::Int(1), Value::Int(5), Value::Int(10)]);
+        let input = tensor_randn(&[input_shape], &ctx).unwrap();
+        let result = lstm_seq(&[lstm_val, input], &ctx).unwrap();
+        let t = value_to_tensor(&result).unwrap();
+        assert_eq!(t.dims(), &[1, 5, 20]);
+
+        // VarMap should have LSTM variables
+        let varmap = value_to_param_map(&pm).unwrap();
+        let vars = varmap.lock().all_vars();
+        assert!(vars.len() >= 4, "Expected at least 4 LSTM vars (w_ih, w_hh, b_ih, b_hh), got {}", vars.len());
+    }
+
+    #[test]
+    fn test_mse_loss() {
+        let ctx = make_ctx();
+        let pred_data = Value::list(vec![Value::Float(1.0), Value::Float(2.0), Value::Float(3.0)]);
+        let target_data = Value::list(vec![Value::Float(1.0), Value::Float(2.0), Value::Float(3.0)]);
+        let pred = tensor_from_list(&[pred_data], &ctx).unwrap();
+        let target = tensor_from_list(&[target_data], &ctx).unwrap();
+
+        let l = loss_mse(&[pred, target], &ctx).unwrap();
+        let loss_val: f32 = value_to_tensor(&l).unwrap().to_scalar().unwrap();
+        assert!(loss_val.abs() < 1e-6, "MSE of identical tensors should be ~0, got {}", loss_val);
+    }
+
+    #[test]
+    fn test_sgd_training_step() {
+        let ctx = make_ctx();
+        let pm = param_map_create(&[], &ctx).unwrap();
+
+        // Create a trainable weight [1] initialized to randn
+        let shape = Value::list(vec![Value::Int(1)]);
+        let w = param_randn(&[pm.clone(), Value::string("w"), shape], &ctx).unwrap();
+
+        // Target: we want w to be close to 5.0
+        let target_data = Value::list(vec![Value::Float(5.0)]);
+        let target = tensor_from_list(&[target_data], &ctx).unwrap();
+
+        // Create SGD optimizer
+        let opt = optimizer_sgd(&[pm, Value::Float(0.1)], &ctx).unwrap();
+
+        // Train for a few steps
+        let mut prev_loss = f64::MAX;
+        for _ in 0..10 {
+            let l = loss_mse(&[w.clone(), target.clone()], &ctx).unwrap();
+            let loss_val = train_step(&[opt.clone(), l], &ctx).unwrap();
+            let lv = loss_val.as_f64().unwrap();
+            assert!(lv < prev_loss, "Loss should decrease: {} >= {}", lv, prev_loss);
+            prev_loss = lv;
+        }
+        assert!(prev_loss < 1.0, "After 10 steps loss should be small, got {}", prev_loss);
+    }
+
+    #[test]
+    fn test_adam_training_step() {
+        let ctx = make_ctx();
+        let pm = param_map_create(&[], &ctx).unwrap();
+
+        let shape = Value::list(vec![Value::Int(1)]);
+        let w = param_randn(&[pm.clone(), Value::string("w"), shape], &ctx).unwrap();
+
+        let target_data = Value::list(vec![Value::Float(3.0)]);
+        let target = tensor_from_list(&[target_data], &ctx).unwrap();
+
+        let opt = optimizer_adam(&[pm, Value::Float(0.1)], &ctx).unwrap();
+
+        let mut prev_loss = f64::MAX;
+        for _ in 0..50 {
+            let l = loss_mse(&[w.clone(), target.clone()], &ctx).unwrap();
+            let loss_val = train_step(&[opt.clone(), l], &ctx).unwrap();
+            let lv = loss_val.as_f64().unwrap();
+            prev_loss = lv;
+        }
+        assert!(prev_loss < 1.0, "After 50 Adam steps loss should be small, got {}", prev_loss);
+    }
+
+    #[test]
+    fn test_lstm_training_loop() {
+        let ctx = make_ctx();
+        let pm = param_map_create(&[], &ctx).unwrap();
+
+        // Trainable LSTM: input_dim=1, hidden_dim=4
+        let lstm_val = lstm_trainable(
+            &[pm.clone(), Value::string("lstm"), Value::Int(1), Value::Int(4)],
+            &ctx,
+        ).unwrap();
+
+        // Trainable output weight [1, 4] to map hidden to scalar
+        let w_shape = Value::list(vec![Value::Int(1), Value::Int(4)]);
+        let w_out = param_randn(&[pm.clone(), Value::string("w_out"), w_shape], &ctx).unwrap();
+
+        let opt = optimizer_sgd(&[pm, Value::Float(0.01)], &ctx).unwrap();
+
+        // Simple task: input [1, 3, 1] with values [1,1,1] -> target sum = 3
+        let input_data = Value::list(vec![
+            Value::Float(1.0), Value::Float(1.0), Value::Float(1.0),
+        ]);
+        let input_flat = tensor_from_list(&[input_data], &ctx).unwrap();
+        let input_shape = Value::list(vec![Value::Int(1), Value::Int(3), Value::Int(1)]);
+        let input = tensor_reshape(&[input_flat, input_shape], &ctx).unwrap();
+
+        let target_data = Value::list(vec![Value::Float(3.0)]);
+        let target = tensor_from_list(&[target_data], &ctx).unwrap();
+        let target_shape = Value::list(vec![Value::Int(1), Value::Int(1)]);
+        let target = tensor_reshape(&[target, target_shape], &ctx).unwrap();
+
+        let first_loss;
+        // Train for 50 steps
+        // Use `linear` which handles batched input: [1,1,4] @ [1,4]^T -> [1,1,1]
+        {
+            let hidden = lstm_seq(&[lstm_val.clone(), input.clone()], &ctx).unwrap();
+            let last = tensor_narrow(&[hidden, Value::Int(1), Value::Int(2), Value::Int(1)], &ctx).unwrap();
+            let pred = linear(&[last, w_out.clone()], &ctx).unwrap();
+            // Squeeze to [1,1] for MSE
+            let pred = tensor_squeeze(&[pred, Value::Int(2)], &ctx).unwrap();
+            let l = loss_mse(&[pred, target.clone()], &ctx).unwrap();
+            first_loss = value_to_tensor(&l).unwrap().to_scalar::<f32>().unwrap();
+        }
+
+        let mut last_loss = first_loss;
+        for _ in 0..50 {
+            let hidden = lstm_seq(&[lstm_val.clone(), input.clone()], &ctx).unwrap();
+            let last = tensor_narrow(&[hidden, Value::Int(1), Value::Int(2), Value::Int(1)], &ctx).unwrap();
+            let pred = linear(&[last, w_out.clone()], &ctx).unwrap();
+            let pred = tensor_squeeze(&[pred, Value::Int(2)], &ctx).unwrap();
+            let l = loss_mse(&[pred, target.clone()], &ctx).unwrap();
+            let loss_val = train_step(&[opt.clone(), l], &ctx).unwrap();
+            last_loss = loss_val.as_f64().unwrap() as f32;
+        }
+
+        assert!(last_loss < first_loss, "LSTM training should reduce loss: first={} last={}", first_loss, last_loss);
+    }
+
+    #[test]
+    fn test_save_load_params() {
+        let ctx = make_ctx();
+        let pm = param_map_create(&[], &ctx).unwrap();
+
+        let shape = Value::list(vec![Value::Int(2), Value::Int(3)]);
+        let _w = param_randn(&[pm.clone(), Value::string("test_weight"), shape], &ctx).unwrap();
+
+        // Save
+        let tmp_path = "/tmp/test_nostos_params.safetensors";
+        param_save(&[pm.clone(), Value::string(tmp_path)], &ctx).unwrap();
+
+        // File should exist
+        assert!(std::path::Path::new(tmp_path).exists());
+
+        // Load into same param map (should succeed)
+        param_load(&[pm, Value::string(tmp_path)], &ctx).unwrap();
+
+        // Cleanup
+        std::fs::remove_file(tmp_path).ok();
     }
 }

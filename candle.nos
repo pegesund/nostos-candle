@@ -309,3 +309,64 @@ pub dropoutLayer(x: Tensor, p: Float) -> Tensor = {
     scale = fromList([1.0 / (1.0 - p)])
     tensorMul(tensorMul(x, mask), scale)
 }
+
+# =============================================================================
+# Training: Parameter Maps
+# =============================================================================
+
+# Create an empty parameter map (collects all trainable weights)
+pub paramMapCreate() -> ParamMap = __native__("Candle.paramMapCreate")
+
+# Create a trainable tensor with random normal initialization
+pub paramRandn(params: ParamMap, name: String, shape: List[Int]) -> Tensor = __native__("Candle.paramRandn", params, name, shape)
+
+# Create a trainable tensor initialized to zeros
+pub paramZeros(params: ParamMap, name: String, shape: List[Int]) -> Tensor = __native__("Candle.paramZeros", params, name, shape)
+
+# Save all parameters to a safetensors file
+pub paramSave(params: ParamMap, path: String) -> Int = __native__("Candle.paramSave", params, path)
+
+# Load parameters from a safetensors file
+pub paramLoad(params: ParamMap, path: String) -> Int = __native__("Candle.paramLoad", params, path)
+
+# =============================================================================
+# Training: Trainable LSTM
+# =============================================================================
+
+# Create an LSTM with trainable weights registered in the parameter map.
+# The prefix namespaces the weights (e.g. "encoder" -> "encoder.weight_ih_l0").
+pub lstmTrainable(params: ParamMap, prefix: String, inputDim: Int, hiddenDim: Int) -> LSTM = __native__("Candle.lstmTrainable", params, prefix, inputDim, hiddenDim)
+
+# =============================================================================
+# Training: Optimizers
+# =============================================================================
+
+# Create SGD optimizer with given learning rate
+pub sgd(params: ParamMap, lr: Float) -> Optimizer = __native__("Candle.sgd", params, lr)
+
+# Create Adam optimizer with given learning rate (default betas, eps, weight_decay)
+pub adam(params: ParamMap, lr: Float) -> Optimizer = __native__("Candle.adam", params, lr)
+
+# Create Adam optimizer with full control over hyperparameters
+pub adamFull(params: ParamMap, lr: Float, beta1: Float, beta2: Float, eps: Float, wd: Float) -> Optimizer = __native__("Candle.adamFull", params, lr, beta1, beta2, eps, wd)
+
+# Change the learning rate of an optimizer
+pub setLearningRate(opt: Optimizer, lr: Float) -> Int = __native__("Candle.setLearningRate", opt, lr)
+
+# =============================================================================
+# Training: Loss Functions
+# =============================================================================
+
+# Mean squared error: mseLoss(predictions, targets) -> scalar loss tensor
+pub mseLoss(pred: Tensor, target: Tensor) -> Tensor = __native__("Candle.mseLoss", pred, target)
+
+# Cross-entropy loss: crossEntropyLoss(logits [N,C], targetIds [N]) -> scalar loss tensor
+pub crossEntropyLoss(logits: Tensor, targets: Tensor) -> Tensor = __native__("Candle.crossEntropyLoss", logits, targets)
+
+# =============================================================================
+# Training: Train Step
+# =============================================================================
+
+# Perform one training step: backward pass + optimizer weight update.
+# Returns the loss value as a Float.
+pub trainStep(opt: Optimizer, loss: Tensor) -> Float = __native__("Candle.trainStep", opt, loss)

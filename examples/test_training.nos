@@ -1,0 +1,24 @@
+# Quick smoke test: train a single weight to match a target value
+use candle.*
+
+main() = {
+    params = paramMapCreate()
+    w = paramRandn(params, "w", [1])
+    target = fromList([5.0])
+
+    opt = sgd(params, 0.1)
+
+    println("Training a single weight to reach 5.0:")
+    var i = 0
+    while i < 20 {
+        loss = mseLoss(w, target)
+        lv = trainStep(opt, loss)
+        if i % 5 == 0 {
+            println("  step " ++ show(i) ++ " loss: " ++ show(lv))
+        }
+        i = i + 1
+    }
+    println("  final weight: " ++ show(toList(w)))
+    println("  target was:   [5.0]")
+    0
+}
