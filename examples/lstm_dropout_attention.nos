@@ -1,0 +1,246 @@
+# ============================================================================
+# LSTM + Dropout + Attention: A Step-by-Step Tutorial
+# ============================================================================
+#
+# This example builds a neural network layer by layer, showing what each
+# component does and why you need it. We process a small sequence and
+# watch the data transform at every stage.
+#
+# Architecture:
+#
+#   Input sequence [batch, seq_len, features]
+#         |
+#         v
+#   +-----------+
+#   |   LSTM    |  Learns temporal patterns (memory of past inputs)
+#   +-----------+
+#         |
+#         v  hidden states [batch, seq_len, hidden_dim]
+#   +-----------+
+#   |  Dropout  |  Randomly zeros neurons to prevent overfitting
+#   +-----------+
+#         |
+#         v  regularized hidden states (same shape)
+#   +-----------+
+#   | Attention |  Lets the model focus on the most relevant timesteps
+#   +-----------+
+#         |
+#         v  attended output [batch, seq_len, hidden_dim]
+#   +-----------+
+#   |  Linear   |  Projects to final output size
+#   +-----------+
+#         |
+#         v  predictions [batch, seq_len, output_dim]
+#
+# ============================================================================
+
+use candle.*
+
+# Helper: print a tensor's shape and values
+showTensor(name: String, t: Tensor) = {
+    println("  " ++ name ++ " shape: " ++ show(tensorShape(t)))
+    println("  " ++ name ++ " values: " ++ show(toList(t)))
+    println("")
+}
+
+printHeader(title: String) = {
+    println("==========")
+    println(title)
+    println("==========")
+}
+
+# ========================================================================
+# Step 1: Create input data
+# ========================================================================
+#
+# Imagine a sensor reading 3 features every timestep, for 4 timesteps.
+# batch=1 (one sequence), seq_len=4, features=3
+#
+# In a real scenario this could be:
+#   - Stock prices (open, high, low) over time
+#   - Accelerometer readings (x, y, z) from a phone
+#   - Word embeddings in a sentence
+
+step1_input() = {
+    printHeader("STEP 1: Input data")
+
+    # fromList takes a flat list; reshape gives it the 3D structure.
+    # 12 values -> [1 batch, 4 timesteps, 3 features]
+    input = reshape(
+        fromList([0.1, 0.2, 0.3,
+                  0.4, 0.5, 0.6,
+                  0.7, 0.8, 0.9,
+                  1.0, 1.1, 1.2]),
+        [1, 4, 3]
+    )
+    showTensor("input", input)
+    input
+}
+
+# ========================================================================
+# Step 2: LSTM - Learn temporal patterns
+# ========================================================================
+#
+# The LSTM reads the sequence left-to-right, maintaining a hidden state
+# that acts as "memory". At each timestep it decides:
+#   - What to remember (input gate)
+#   - What to forget (forget gate)
+#   - What to output (output gate)
+#
+# Input:  [1, 4, 3]  (batch=1, 4 timesteps, 3 features)
+# Output: [1, 4, 8]  (batch=1, 4 timesteps, 8 hidden units)
+#
+# Each of the 4 output vectors encodes information about the sequence
+# UP TO that point. The last one "knows" about the whole sequence.
+
+step2_lstm(input: Tensor, lstm: LSTM) = {
+    printHeader("STEP 2: LSTM layer")
+
+    hidden = lstmSeq(lstm, input)
+    showTensor("LSTM hidden states", hidden)
+
+    println("  Note: 4 output vectors, one per timestep.")
+    println("  Each vector has 8 dimensions (hiddenDim).")
+    println("  Later timesteps encode more context.")
+    println("")
+    hidden
+}
+
+# ========================================================================
+# Step 3: Dropout - Prevent overfitting
+# ========================================================================
+#
+# Dropout randomly sets some hidden values to zero during training.
+# This forces the network to not rely on any single neuron, making
+# it more robust. Think of it as training with a "team" where random
+# members are absent each day - the team learns to be resilient.
+#
+# p=0.2 means each value has a 20% chance of being zeroed.
+# The remaining values are scaled up by 1/(1-p) = 1.25 to keep
+# the expected sum the same (this is "inverted dropout").
+#
+# At inference time, you simply skip this layer.
+
+step3_dropout(hidden: Tensor, dropProb: Float) = {
+    printHeader("STEP 3: Dropout layer (p=0.2)")
+
+    dropped = dropoutLayer(hidden, dropProb)
+    showTensor("after dropout", dropped)
+
+    println("  Notice some values became 0.0 (dropped out).")
+    println("  Non-zero values are scaled by 1/(1-0.2) = 1.25")
+    println("  At inference: skip dropout, output unchanged.")
+    println("")
+    dropped
+}
+
+# ========================================================================
+# Step 4: Multi-Head Attention - Focus on what matters
+# ========================================================================
+#
+# The LSTM processes left-to-right, so early timesteps don't know about
+# later ones. Attention fixes this by letting EVERY position look at
+# EVERY other position and decide what's relevant.
+#
+# How it works:
+#   1. Each position creates a Query ("what am I looking for?")
+#   2. Each position creates a Key ("what do I contain?")
+#   3. Each position creates a Value ("what info can I provide?")
+#   4. Attention score = how well Query matches each Key
+#   5. Output = weighted sum of Values using attention scores
+#
+# Multi-head: we run this process multiple times in parallel
+# (here 2 heads), each focusing on different aspects. Like having
+# multiple "reviewers" read the same document.
+
+step4_attention(dropped: Tensor, numHeads: Int, wQ: Tensor, wK: Tensor, wV: Tensor, wO: Tensor) = {
+    printHeader("STEP 4: Multi-Head Attention (2 heads)")
+
+    attended = multiHeadAttention(dropped, numHeads, wQ, wK, wV, wO)
+    showTensor("after attention", attended)
+
+    println("  Same shape [1, 4, 8], but now each position")
+    println("  has info from ALL timesteps, weighted by")
+    println("  relevance. Key advantage over raw LSTM.")
+    println("")
+    attended
+}
+
+# ========================================================================
+# Step 5: Output projection - Map to final predictions
+# ========================================================================
+#
+# A simple linear layer maps from hidden_dim to output_dim.
+# For example:
+#   - 1 output per timestep for regression (predict next value)
+#   - N outputs for classification (predict category)
+
+step5_linear(attended: Tensor, wOut: Tensor) = {
+    printHeader("STEP 5: Linear output layer")
+
+    predictions = linear(attended, wOut)
+    showTensor("predictions", predictions)
+
+    println("  Final: [1, 4, 2] = one 2D prediction per timestep.")
+    println("")
+    predictions
+}
+
+# ========================================================================
+# Bonus: Compact versions
+# ========================================================================
+
+bonus(lstm: LSTM, input: Tensor, numHeads: Int, wQ: Tensor, wK: Tensor, wV: Tensor, wO: Tensor, wOut: Tensor, dropProb: Float) = {
+    printHeader("BONUS: Compact version")
+
+    # Option A: LSTM + attention combined, dropout after
+    combined = lstmAttention(lstm, input, numHeads, wQ, wK, wV, wO)
+    result = linear(dropoutLayer(combined, dropProb), wOut)
+    println("  Combined pipeline shape: " ++ show(tensorShape(result)))
+
+    # Option B: Dropout between LSTM and attention (more common)
+    var h = lstmSeq(lstm, input)
+    h = dropoutLayer(h, dropProb)
+    h = multiHeadAttention(h, numHeads, wQ, wK, wV, wO)
+    result2 = linear(h, wOut)
+    println("  Dropout-between shape:   " ++ show(tensorShape(result2)))
+
+    println("")
+    println("Both approaches are valid. Placing dropout BETWEEN")
+    println("LSTM and attention (Option B) is more common.")
+    0
+}
+
+# ========================================================================
+# Main: run the full pipeline
+# ========================================================================
+
+main() = {
+    hiddenDim = 8
+
+    # Step 1: input data
+    input = step1_input()
+
+    # Step 2: LSTM
+    lstm = lstmCreate(3, hiddenDim)
+    hidden = step2_lstm(input, lstm)
+
+    # Step 3: dropout
+    dropProb = 0.2
+    dropped = step3_dropout(hidden, dropProb)
+
+    # Step 4: attention weights and layer
+    numHeads = 2
+    wQ = randn([hiddenDim, hiddenDim])
+    wK = randn([hiddenDim, hiddenDim])
+    wV = randn([hiddenDim, hiddenDim])
+    wO = randn([hiddenDim, hiddenDim])
+    attended = step4_attention(dropped, numHeads, wQ, wK, wV, wO)
+
+    # Step 5: output projection
+    wOut = randn([2, hiddenDim])
+    step5_linear(attended, wOut)
+
+    # Bonus: compact versions
+    bonus(lstm, input, numHeads, wQ, wK, wV, wO, wOut, dropProb)
+}
