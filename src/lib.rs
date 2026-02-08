@@ -3,6 +3,8 @@
 //! Provides tensor operations using the Candle ML framework.
 
 use candle_core::{DType, Device, Tensor};
+use candle_nn::rnn::{LSTM, LSTMConfig, LSTMState, RNN};
+use candle_nn::VarBuilder;
 use nostos_extension::*;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,11 +18,19 @@ const TENSOR_MAP_TYPE_ID: u64 = 2;
 // Type ID for tokenizers
 const TOKENIZER_TYPE_ID: u64 = 3;
 
+// Type ID for LSTM models
+const LSTM_TYPE_ID: u64 = 4;
+
+// Type ID for LSTM states (hidden + cell)
+const LSTM_STATE_TYPE_ID: u64 = 5;
+
 fn register(reg: &mut ExtRegistry) {
     // === Declare opaque types ===
     reg.add_opaque_type("Tensor");
     reg.add_opaque_type("TensorMap");  // Safetensors loaded model
     reg.add_opaque_type("Tokenizer");
+    reg.add_opaque_type("LSTM");
+    reg.add_opaque_type("LSTMState");
 
     // === Tensor creation ===
     reg.add_fn("Candle.zeros", "(List[Int]) -> Tensor", tensor_zeros);
@@ -101,6 +111,21 @@ fn register(reg: &mut ExtRegistry) {
     reg.add_fn("Candle.cast", "(Tensor, String) -> Tensor", tensor_cast);
     reg.add_fn("Candle.silu", "(Tensor) -> Tensor", tensor_silu);
     reg.add_fn("Candle.ropeFreqs", "(Int, Int, Float) -> List[Tensor]", rope_frequencies);
+
+    // === LSTM ===
+    reg.add_fn("Candle.lstmCreate", "(Int, Int) -> LSTM", lstm_create);
+    reg.add_fn("Candle.lstmFromTensors", "(TensorMap, String, Int, Int) -> LSTM", lstm_from_tensors);
+    reg.add_fn("Candle.lstmZeroState", "(LSTM, Int) -> LSTMState", lstm_zero_state);
+    reg.add_fn("Candle.lstmStep", "(LSTM, Tensor, LSTMState) -> List[Tensor]", lstm_step);
+    reg.add_fn("Candle.lstmSeq", "(LSTM, Tensor) -> Tensor", lstm_seq);
+    reg.add_fn("Candle.lstmSeqInit", "(LSTM, Tensor, LSTMState) -> Tensor", lstm_seq_init);
+    reg.add_fn("Candle.lstmHidden", "(LSTMState) -> Tensor", lstm_hidden);
+    reg.add_fn("Candle.lstmCell", "(LSTMState) -> Tensor", lstm_cell);
+
+    // === Attention ===
+    reg.add_fn("Candle.scaledDotProductAttention", "(Tensor, Tensor, Tensor) -> Tensor", scaled_dot_product_attention);
+    reg.add_fn("Candle.multiHeadAttention", "(Tensor, Int, Tensor, Tensor, Tensor, Tensor) -> Tensor", multi_head_attention);
+    reg.add_fn("Candle.lstmAttention", "(LSTM, Tensor, Int, Tensor, Tensor, Tensor, Tensor) -> Tensor", lstm_attention);
 }
 
 // Type ID for tensors in GcNativeHandle
@@ -1067,6 +1092,318 @@ fn rope_frequencies(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> 
     ]))
 }
 
+// ==================== LSTM ====================
+
+fn lstm_cleanup(ptr: usize, type_id: u64) {
+    if type_id == LSTM_TYPE_ID && ptr != 0 {
+        unsafe {
+            let _ = Box::from_raw(ptr as *mut LSTM);
+        }
+    }
+}
+
+fn lstm_to_value(lstm: LSTM) -> Value {
+    Value::gc_handle(Box::new(lstm), LSTM_TYPE_ID, lstm_cleanup)
+}
+
+fn value_to_lstm(v: &Value) -> Result<&LSTM, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != LSTM_TYPE_ID {
+        return Err(format!("Expected LSTM (type_id={}), got type_id={}", LSTM_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 {
+        return Err("LSTM handle is null".to_string());
+    }
+    Ok(unsafe { &*(handle.ptr as *const LSTM) })
+}
+
+fn lstm_state_cleanup(ptr: usize, type_id: u64) {
+    if type_id == LSTM_STATE_TYPE_ID && ptr != 0 {
+        unsafe {
+            let _ = Box::from_raw(ptr as *mut LSTMState);
+        }
+    }
+}
+
+fn lstm_state_to_value(state: LSTMState) -> Value {
+    Value::gc_handle(Box::new(state), LSTM_STATE_TYPE_ID, lstm_state_cleanup)
+}
+
+fn value_to_lstm_state(v: &Value) -> Result<&LSTMState, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != LSTM_STATE_TYPE_ID {
+        return Err(format!("Expected LSTMState (type_id={}), got type_id={}", LSTM_STATE_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 {
+        return Err("LSTMState handle is null".to_string());
+    }
+    Ok(unsafe { &*(handle.ptr as *const LSTMState) })
+}
+
+/// Create an LSTM with random weights: lstmCreate(inputDim, hiddenDim) -> LSTM
+fn lstm_create(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let input_dim = args[0].as_i64()? as usize;
+    let hidden_dim = args[1].as_i64()? as usize;
+
+    // Xavier initialization
+    let std_dev = (2.0 / (input_dim + hidden_dim) as f32).sqrt();
+    let mut tensors = HashMap::new();
+
+    tensors.insert(
+        "weight_ih_l0".to_string(),
+        Tensor::randn(0f32, std_dev, &[4 * hidden_dim, input_dim], &Device::Cpu)
+            .map_err(|e| e.to_string())?,
+    );
+    tensors.insert(
+        "weight_hh_l0".to_string(),
+        Tensor::randn(0f32, std_dev, &[4 * hidden_dim, hidden_dim], &Device::Cpu)
+            .map_err(|e| e.to_string())?,
+    );
+    tensors.insert(
+        "bias_ih_l0".to_string(),
+        Tensor::zeros(&[4 * hidden_dim], DType::F32, &Device::Cpu)
+            .map_err(|e| e.to_string())?,
+    );
+    tensors.insert(
+        "bias_hh_l0".to_string(),
+        Tensor::zeros(&[4 * hidden_dim], DType::F32, &Device::Cpu)
+            .map_err(|e| e.to_string())?,
+    );
+
+    let vb = VarBuilder::from_tensors(tensors, DType::F32, &Device::Cpu);
+    let lstm = LSTM::new(input_dim, hidden_dim, LSTMConfig::default(), vb)
+        .map_err(|e| e.to_string())?;
+
+    Ok(lstm_to_value(lstm))
+}
+
+/// Load LSTM from a TensorMap with prefix: lstmFromTensors(map, prefix, inputDim, hiddenDim) -> LSTM
+fn lstm_from_tensors(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let map = value_to_tensor_map(&args[0])?;
+    let prefix = args[1].as_string()?;
+    let input_dim = args[2].as_i64()? as usize;
+    let hidden_dim = args[3].as_i64()? as usize;
+    let prefix_str: &str = &prefix;
+
+    // Filter tensors by prefix and strip it
+    let prefixed: HashMap<String, Tensor> = map.iter()
+        .filter(|(k, _)| k.starts_with(prefix_str))
+        .map(|(k, v)| {
+            let stripped = k.strip_prefix(prefix_str)
+                .unwrap_or(k)
+                .trim_start_matches('.')
+                .to_string();
+            (stripped, v.clone())
+        })
+        .collect();
+
+    if prefixed.is_empty() {
+        return Err(format!("No tensors found with prefix '{}'", prefix_str));
+    }
+
+    let vb = VarBuilder::from_tensors(prefixed, DType::F32, &Device::Cpu);
+    let lstm = LSTM::new(input_dim, hidden_dim, LSTMConfig::default(), vb)
+        .map_err(|e| e.to_string())?;
+
+    Ok(lstm_to_value(lstm))
+}
+
+/// Create zero initial state: lstmZeroState(lstm, batchSize) -> LSTMState
+fn lstm_zero_state(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let lstm = value_to_lstm(&args[0])?;
+    let batch_size = args[1].as_i64()? as usize;
+
+    let state = lstm.zero_state(batch_size).map_err(|e| e.to_string())?;
+    Ok(lstm_state_to_value(state))
+}
+
+/// Single LSTM step: lstmStep(lstm, input, state) -> [outputTensor, newState]
+/// input: [batch, input_dim]
+fn lstm_step(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let lstm = value_to_lstm(&args[0])?;
+    let input = value_to_tensor(&args[1])?;
+    let state = value_to_lstm_state(&args[2])?;
+
+    let new_state = lstm.step(input, state).map_err(|e| e.to_string())?;
+    let output = new_state.h().clone();
+
+    let output_val = tensor_to_value(output);
+    let state_val = lstm_state_to_value(new_state);
+
+    Ok(Value::list(vec![output_val, state_val]))
+}
+
+/// Full sequence forward pass: lstmSeq(lstm, input) -> Tensor [batch, seq, hidden]
+/// input: [batch, seq, input_dim]
+fn lstm_seq(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let lstm = value_to_lstm(&args[0])?;
+    let input = value_to_tensor(&args[1])?;
+
+    let states = lstm.seq(input).map_err(|e| e.to_string())?;
+    let hidden = lstm.states_to_tensor(&states).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(hidden))
+}
+
+/// Full sequence with initial state: lstmSeqInit(lstm, input, state) -> Tensor
+fn lstm_seq_init(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let lstm = value_to_lstm(&args[0])?;
+    let input = value_to_tensor(&args[1])?;
+    let init_state = value_to_lstm_state(&args[2])?;
+
+    let states = lstm.seq_init(input, init_state).map_err(|e| e.to_string())?;
+    let hidden = lstm.states_to_tensor(&states).map_err(|e| e.to_string())?;
+
+    Ok(tensor_to_value(hidden))
+}
+
+/// Extract hidden tensor from state: lstmHidden(state) -> Tensor
+fn lstm_hidden(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let state = value_to_lstm_state(&args[0])?;
+    Ok(tensor_to_value(state.h().clone()))
+}
+
+/// Extract cell tensor from state: lstmCell(state) -> Tensor
+fn lstm_cell(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let state = value_to_lstm_state(&args[0])?;
+    Ok(tensor_to_value(state.c().clone()))
+}
+
+// ==================== Attention ====================
+
+/// Scaled dot-product attention: scaledDotProductAttention(Q, K, V) -> Tensor
+/// Q: [..., seq_q, d_k], K: [..., seq_k, d_k], V: [..., seq_k, d_v]
+/// Returns: [..., seq_q, d_v]
+fn scaled_dot_product_attention(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let q = value_to_tensor(&args[0])?;
+    let k = value_to_tensor(&args[1])?;
+    let v = value_to_tensor(&args[2])?;
+
+    let result = scaled_dot_product_attn_inner(q, k, v)?;
+    Ok(tensor_to_value(result))
+}
+
+fn scaled_dot_product_attn_inner(q: &Tensor, k: &Tensor, v: &Tensor) -> Result<Tensor, String> {
+    let d_k = *k.dims().last().ok_or("Empty tensor dimensions")? as f64;
+    let scale = d_k.sqrt();
+
+    // K^T: transpose last two dimensions
+    let k_ndim = k.dims().len();
+    let k_t = k.transpose(k_ndim - 2, k_ndim - 1).map_err(|e| e.to_string())?;
+
+    // scores = Q @ K^T / sqrt(d_k)
+    let scores = q.broadcast_matmul(&k_t).map_err(|e| e.to_string())?;
+    let scale_tensor = Tensor::new(&[scale as f32], &Device::Cpu).map_err(|e| e.to_string())?;
+    let scores = scores.broadcast_div(&scale_tensor).map_err(|e| e.to_string())?;
+
+    // weights = softmax(scores, dim=-1)
+    let last_dim = scores.dims().len() - 1;
+    let weights = candle_nn::ops::softmax(&scores, last_dim).map_err(|e| e.to_string())?;
+
+    // output = weights @ V
+    let output = weights.broadcast_matmul(v).map_err(|e| e.to_string())?;
+    Ok(output)
+}
+
+/// Internal multi-head attention on tensors
+fn multi_head_attn_inner(
+    x: &Tensor,
+    num_heads: usize,
+    wq: &Tensor,
+    wk: &Tensor,
+    wv: &Tensor,
+    wo: &Tensor,
+) -> Result<Tensor, String> {
+    let dims = x.dims();
+    if dims.len() != 3 {
+        return Err(format!("Expected 3D input [batch, seq, dim], got {}D", dims.len()));
+    }
+    let batch = dims[0];
+    let seq = dims[1];
+    let dim = dims[2];
+    let head_dim = dim / num_heads;
+
+    if dim % num_heads != 0 {
+        return Err(format!("Dimension {} not divisible by {} heads", dim, num_heads));
+    }
+
+    // Project Q, K, V: x @ W^T
+    let wq_t = wq.t().map_err(|e| e.to_string())?;
+    let wk_t = wk.t().map_err(|e| e.to_string())?;
+    let wv_t = wv.t().map_err(|e| e.to_string())?;
+
+    let q = x.broadcast_matmul(&wq_t).map_err(|e| e.to_string())?;
+    let k = x.broadcast_matmul(&wk_t).map_err(|e| e.to_string())?;
+    let v = x.broadcast_matmul(&wv_t).map_err(|e| e.to_string())?;
+
+    // Reshape to [batch, seq, num_heads, head_dim] -> transpose to [batch, num_heads, seq, head_dim]
+    let q = q.reshape(&[batch, seq, num_heads, head_dim]).map_err(|e| e.to_string())?
+        .transpose(1, 2).map_err(|e| e.to_string())?
+        .contiguous().map_err(|e| e.to_string())?;
+    let k = k.reshape(&[batch, seq, num_heads, head_dim]).map_err(|e| e.to_string())?
+        .transpose(1, 2).map_err(|e| e.to_string())?
+        .contiguous().map_err(|e| e.to_string())?;
+    let v = v.reshape(&[batch, seq, num_heads, head_dim]).map_err(|e| e.to_string())?
+        .transpose(1, 2).map_err(|e| e.to_string())?
+        .contiguous().map_err(|e| e.to_string())?;
+
+    // Scaled dot-product attention per head
+    let scale = (head_dim as f64).sqrt();
+    let k_t = k.transpose(2, 3).map_err(|e| e.to_string())?;
+    let scores = q.matmul(&k_t).map_err(|e| e.to_string())?;
+    let scale_tensor = Tensor::new(&[scale as f32], &Device::Cpu).map_err(|e| e.to_string())?;
+    let scores = scores.broadcast_div(&scale_tensor).map_err(|e| e.to_string())?;
+
+    let weights = candle_nn::ops::softmax(&scores, 3).map_err(|e| e.to_string())?;
+    let attended = weights.matmul(&v).map_err(|e| e.to_string())?;
+
+    // Concatenate heads: [batch, heads, seq, head_dim] -> [batch, seq, dim]
+    let attended = attended.transpose(1, 2).map_err(|e| e.to_string())?
+        .contiguous().map_err(|e| e.to_string())?;
+    let concat = attended.reshape(&[batch, seq, dim]).map_err(|e| e.to_string())?;
+
+    // Output projection
+    let wo_t = wo.t().map_err(|e| e.to_string())?;
+    let output = concat.broadcast_matmul(&wo_t).map_err(|e| e.to_string())?;
+
+    Ok(output)
+}
+
+/// Multi-head attention: multiHeadAttention(x, numHeads, wQ, wK, wV, wO) -> Tensor
+/// x: [batch, seq, dim], weights: [dim, dim] each
+fn multi_head_attention(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let x = value_to_tensor(&args[0])?;
+    let num_heads = args[1].as_i64()? as usize;
+    let wq = value_to_tensor(&args[2])?;
+    let wk = value_to_tensor(&args[3])?;
+    let wv = value_to_tensor(&args[4])?;
+    let wo = value_to_tensor(&args[5])?;
+
+    let result = multi_head_attn_inner(x, num_heads, wq, wk, wv, wo)?;
+    Ok(tensor_to_value(result))
+}
+
+/// Combined LSTM + multi-head attention:
+/// lstmAttention(lstm, input, numHeads, wQ, wK, wV, wO) -> Tensor
+/// Runs LSTM on input, then applies multi-head self-attention over hidden states
+fn lstm_attention(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let lstm = value_to_lstm(&args[0])?;
+    let input = value_to_tensor(&args[1])?;
+    let num_heads = args[2].as_i64()? as usize;
+    let wq = value_to_tensor(&args[3])?;
+    let wk = value_to_tensor(&args[4])?;
+    let wv = value_to_tensor(&args[5])?;
+    let wo = value_to_tensor(&args[6])?;
+
+    // 1. Run LSTM → hidden states [batch, seq, hidden_dim]
+    let states = lstm.seq(input).map_err(|e| e.to_string())?;
+    let hidden = lstm.states_to_tensor(&states).map_err(|e| e.to_string())?;
+
+    // 2. Apply multi-head self-attention over hidden states
+    let result = multi_head_attn_inner(&hidden, num_heads, wq, wk, wv, wo)?;
+    Ok(tensor_to_value(result))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1111,6 +1448,111 @@ mod tests {
         let t = value_to_tensor(&result).unwrap();
         let data: Vec<f32> = t.flatten_all().unwrap().to_vec1().unwrap();
         assert_eq!(data, vec![2.0, 2.0]);
+    }
+
+    #[test]
+    fn test_lstm_create() {
+        let ctx = make_ctx();
+        let result = lstm_create(&[Value::Int(10), Value::Int(20)], &ctx).unwrap();
+        let lstm = value_to_lstm(&result).unwrap();
+        let state = lstm.zero_state(1).unwrap();
+        assert_eq!(state.h().dims(), &[1, 20]);
+        assert_eq!(state.c().dims(), &[1, 20]);
+    }
+
+    #[test]
+    fn test_lstm_seq() {
+        let ctx = make_ctx();
+        let lstm_val = lstm_create(&[Value::Int(10), Value::Int(20)], &ctx).unwrap();
+
+        // Random input [batch=1, seq=5, input_dim=10]
+        let input_shape = Value::list(vec![Value::Int(1), Value::Int(5), Value::Int(10)]);
+        let input = tensor_randn(&[input_shape], &ctx).unwrap();
+
+        let result = lstm_seq(&[lstm_val, input], &ctx).unwrap();
+        let t = value_to_tensor(&result).unwrap();
+        assert_eq!(t.dims(), &[1, 5, 20]);
+    }
+
+    #[test]
+    fn test_lstm_step() {
+        let ctx = make_ctx();
+        let lstm_val = lstm_create(&[Value::Int(10), Value::Int(20)], &ctx).unwrap();
+
+        let state = lstm_zero_state(&[lstm_val.clone(), Value::Int(1)], &ctx).unwrap();
+
+        // Single step input [batch=1, input_dim=10]
+        let input_shape = Value::list(vec![Value::Int(1), Value::Int(10)]);
+        let input = tensor_randn(&[input_shape], &ctx).unwrap();
+
+        let result = lstm_step(&[lstm_val, input, state], &ctx).unwrap();
+        let list = result.as_list().unwrap();
+        assert_eq!(list.len(), 2);
+
+        // Output tensor
+        let output = value_to_tensor(&list[0]).unwrap();
+        assert_eq!(output.dims(), &[1, 20]);
+
+        // New state hidden
+        let new_hidden = lstm_hidden(&[list[1].clone()], &ctx).unwrap();
+        let h = value_to_tensor(&new_hidden).unwrap();
+        assert_eq!(h.dims(), &[1, 20]);
+    }
+
+    #[test]
+    fn test_scaled_dot_product_attention() {
+        let ctx = make_ctx();
+        let shape = Value::list(vec![Value::Int(1), Value::Int(4), Value::Int(8)]);
+        let q = tensor_randn(&[shape.clone()], &ctx).unwrap();
+        let k = tensor_randn(&[shape.clone()], &ctx).unwrap();
+        let v = tensor_randn(&[shape], &ctx).unwrap();
+
+        let result = scaled_dot_product_attention(&[q, k, v], &ctx).unwrap();
+        let t = value_to_tensor(&result).unwrap();
+        assert_eq!(t.dims(), &[1, 4, 8]);
+    }
+
+    #[test]
+    fn test_multi_head_attention() {
+        let ctx = make_ctx();
+        let x_shape = Value::list(vec![Value::Int(1), Value::Int(4), Value::Int(8)]);
+        let x = tensor_randn(&[x_shape], &ctx).unwrap();
+
+        let w_shape = Value::list(vec![Value::Int(8), Value::Int(8)]);
+        let wq = tensor_randn(&[w_shape.clone()], &ctx).unwrap();
+        let wk = tensor_randn(&[w_shape.clone()], &ctx).unwrap();
+        let wv = tensor_randn(&[w_shape.clone()], &ctx).unwrap();
+        let wo = tensor_randn(&[w_shape], &ctx).unwrap();
+
+        let result = multi_head_attention(
+            &[x, Value::Int(2), wq, wk, wv, wo], &ctx
+        ).unwrap();
+        let t = value_to_tensor(&result).unwrap();
+        assert_eq!(t.dims(), &[1, 4, 8]);
+    }
+
+    #[test]
+    fn test_lstm_attention_combined() {
+        let ctx = make_ctx();
+        // LSTM: input_dim=10, hidden_dim=8
+        let lstm_val = lstm_create(&[Value::Int(10), Value::Int(8)], &ctx).unwrap();
+
+        // Input: [batch=1, seq=5, input_dim=10]
+        let input_shape = Value::list(vec![Value::Int(1), Value::Int(5), Value::Int(10)]);
+        let input = tensor_randn(&[input_shape], &ctx).unwrap();
+
+        // Attention weights for hidden_dim=8, 2 heads
+        let w_shape = Value::list(vec![Value::Int(8), Value::Int(8)]);
+        let wq = tensor_randn(&[w_shape.clone()], &ctx).unwrap();
+        let wk = tensor_randn(&[w_shape.clone()], &ctx).unwrap();
+        let wv = tensor_randn(&[w_shape.clone()], &ctx).unwrap();
+        let wo = tensor_randn(&[w_shape], &ctx).unwrap();
+
+        let result = lstm_attention(
+            &[lstm_val, input, Value::Int(2), wq, wk, wv, wo], &ctx
+        ).unwrap();
+        let t = value_to_tensor(&result).unwrap();
+        assert_eq!(t.dims(), &[1, 5, 8]);
     }
 
     #[test]

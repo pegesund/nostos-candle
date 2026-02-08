@@ -235,3 +235,49 @@ pub silu(t: Tensor) -> Tensor = __native__("Candle.silu", t)
 
 # Compute RoPE frequencies
 pub ropeFreqs(seqLen: Int, headDim: Int, theta: Float) -> List[Tensor] = __native__("Candle.ropeFreqs", seqLen, headDim, theta)
+
+# =============================================================================
+# LSTM
+# =============================================================================
+
+# Create LSTM with random weights (Xavier initialization)
+pub lstmCreate(inputDim: Int, hiddenDim: Int) -> LSTM = __native__("Candle.lstmCreate", inputDim, hiddenDim)
+
+# Load LSTM weights from a safetensors model
+# Prefix selects tensors by name prefix (e.g. "encoder.lstm")
+pub lstmFromTensors(model: TensorMap, prefix: String, inputDim: Int, hiddenDim: Int) -> LSTM = __native__("Candle.lstmFromTensors", model, prefix, inputDim, hiddenDim)
+
+# Create zero initial state for given batch size
+pub lstmZeroState(lstm: LSTM, batchSize: Int) -> LSTMState = __native__("Candle.lstmZeroState", lstm, batchSize)
+
+# Single LSTM step: input [batch, inputDim] -> [outputTensor, newState]
+pub lstmStep(lstm: LSTM, input: Tensor, state: LSTMState) -> List[Tensor] = __native__("Candle.lstmStep", lstm, input, state)
+
+# Full sequence forward pass: input [batch, seq, inputDim] -> hidden states [batch, seq, hiddenDim]
+pub lstmSeq(lstm: LSTM, input: Tensor) -> Tensor = __native__("Candle.lstmSeq", lstm, input)
+
+# Full sequence with initial state
+pub lstmSeqInit(lstm: LSTM, input: Tensor, state: LSTMState) -> Tensor = __native__("Candle.lstmSeqInit", lstm, input, state)
+
+# Extract hidden tensor from LSTM state
+pub lstmHidden(state: LSTMState) -> Tensor = __native__("Candle.lstmHidden", state)
+
+# Extract cell tensor from LSTM state
+pub lstmCell(state: LSTMState) -> Tensor = __native__("Candle.lstmCell", state)
+
+# =============================================================================
+# Attention
+# =============================================================================
+
+# Scaled dot-product attention: softmax(Q * K^T / sqrt(d)) * V
+# Q: [..., seqQ, dk], K: [..., seqK, dk], V: [..., seqK, dv] -> [..., seqQ, dv]
+pub scaledDotProductAttention(q: Tensor, k: Tensor, v: Tensor) -> Tensor = __native__("Candle.scaledDotProductAttention", q, k, v)
+
+# Multi-head attention with learned projections
+# x: [batch, seq, dim], weights: [dim, dim] each
+pub multiHeadAttention(x: Tensor, numHeads: Int, wQ: Tensor, wK: Tensor, wV: Tensor, wO: Tensor) -> Tensor = __native__("Candle.multiHeadAttention", x, numHeads, wQ, wK, wV, wO)
+
+# Combined LSTM + multi-head self-attention
+# Runs LSTM, then applies attention over hidden states
+# input: [batch, seq, inputDim] -> attended output [batch, seq, hiddenDim]
+pub lstmAttention(lstm: LSTM, input: Tensor, numHeads: Int, wQ: Tensor, wK: Tensor, wV: Tensor, wO: Tensor) -> Tensor = __native__("Candle.lstmAttention", lstm, input, numHeads, wQ, wK, wV, wO)
