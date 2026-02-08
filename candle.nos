@@ -383,3 +383,14 @@ pub trainStep(opt: Optimizer, loss: Tensor) -> Float = __native__("Candle.trainS
 
 # Count matching elements between two tensors (works with any dtype)
 pub countEqual(a: Tensor, b: Tensor) -> Int = __native__("Candle.countEqual", a, b)
+
+# =============================================================================
+# Convenience Helpers
+# =============================================================================
+
+# Select the last slice along a dimension and squeeze it out.
+# Example: lastDim(hidden, 1) on [batch, 28, 128] -> [batch, 128]
+pub lastDim(t: Tensor, dim: Int) -> Tensor = {
+    n = tensorShape(t)[dim]
+    squeeze(narrow(t, dim, n - 1, 1), dim)
+}

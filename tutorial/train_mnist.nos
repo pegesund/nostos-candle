@@ -6,16 +6,11 @@
 # Run: nostos --use candle tutorial/train_mnist.nos
 use candle.*
 
-# Path to the prepared MNIST safetensors file.
-# Run prepare_mnist.py first to create this.
-dataPath() -> String = "tutorial/data/mnist.safetensors"
-
 # Forward pass: LSTM over 28 rows, take last hidden state, project to 10 classes
 forward(lstm: LSTM, wOut: Tensor, images: Tensor) -> Tensor = {
     hidden = lstmSeq(lstm, images)       # [batch, 28, 128]
-    last = narrow(hidden, 1, 27, 1)      # [batch, 1, 128]
-    last2 = squeeze(last, 1)             # [batch, 128]
-    linear(last2, wOut)                  # [batch, 10]
+    last = lastDim(hidden, 1)            # [batch, 128]
+    linear(last, wOut)                   # [batch, 10]
 }
 
 # Evaluate one batch: forward pass, argmax, count correct
@@ -27,11 +22,14 @@ evalBatch(lstm: LSTM, wOut: Tensor, images: Tensor, labels: Tensor) -> Int = {
 
 main() = {
     println("Loading MNIST from safetensors...")
-    data = loadSafetensors(dataPath())
+    data = loadSafetensors("tutorial/data/mnist.safetensors")
     trainImages = getTensor(data, "train_images")   # [60000, 28, 28]
     trainLabels = getTensor(data, "train_labels")    # [60000]
     testImages = getTensor(data, "test_images")      # [10000, 28, 28]
     testLabels = getTensor(data, "test_labels")      # [10000]
+
+    nTrain = tensorShape(trainImages)[0]
+    nTest = tensorShape(testImages)[0]
 
     println("  Train: " ++ show(tensorShape(trainImages)))
     println("  Test:  " ++ show(tensorShape(testImages)))
@@ -49,7 +47,6 @@ main() = {
 
     batchSize = 128
     numEpochs = 3
-    nTrain = 60000
 
     println("")
     println("Training LSTM on MNIST:")
@@ -65,11 +62,7 @@ main() = {
         var start = 0
 
         while start < nTrain {
-            var curBatch = batchSize
-            if start + curBatch > nTrain {
-                curBatch = nTrain - start
-            }
-
+            curBatch = min(batchSize, nTrain - start)
             images = narrow(trainImages, 0, start, curBatch)
             labels = narrow(trainLabelsU, 0, start, curBatch)
 
@@ -92,7 +85,6 @@ main() = {
     println("Evaluating on test set...")
     var correct = 0
     var testStart = 0
-    nTest = 10000
     evalBatchSize = 100
 
     while testStart < nTest {

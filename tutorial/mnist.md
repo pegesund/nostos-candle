@@ -155,8 +155,8 @@ Both implementations do the same thing:
 
 1. Feed the image `[batch, 28, 28]` into an LSTM — each of the 28 rows is one
    time step with 28 input features
-2. Take the hidden state at the **last time step** (after the LSTM has seen all
-   28 rows) — shape `[batch, 128]`
+2. Take the hidden state at the **last time step** — `lastDim(hidden, 1)` in
+   Nostos, `hidden[:, -1, :]` in Python — shape `[batch, 128]`
 3. Apply a linear projection `[128] -> [10]` to get logits for each digit class
 
 ### Training loop
@@ -217,7 +217,7 @@ special BPTT code.
 
 1. Run forward pass on test images in batches of 100
 2. Take `argmax` of logits to get predicted digit
-3. Compare with ground truth labels and count correct predictions
+3. `countEqual(preds, labels)` counts matching elements directly on tensors (no list conversion needed)
 
 ## Files
 
