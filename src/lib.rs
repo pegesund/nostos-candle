@@ -165,6 +165,9 @@ fn register(reg: &mut ExtRegistry) {
     // === Training: Backward + Step ===
     reg.add_fn("Candle.trainStep", "(Optimizer, Tensor) -> Float", train_step);
     reg.add_fn("Candle.backward", "(Tensor) -> Int", backward);
+
+    // === Comparison ===
+    reg.add_fn("Candle.countEqual", "(Tensor, Tensor) -> Int", count_equal);
 }
 
 // Type ID for tensors in GcNativeHandle
@@ -1703,6 +1706,23 @@ fn backward(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let loss_tensor = value_to_tensor(&args[0])?;
     let _grads = loss_tensor.backward().map_err(|e| e.to_string())?;
     Ok(Value::Int(0))
+}
+
+fn count_equal(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let a = value_to_tensor(&args[0])?;
+    let b = value_to_tensor(&args[1])?;
+    // Compare element-wise, handling different dtypes by casting both to f64
+    let a_f64 = a.to_dtype(DType::F64).map_err(|e| e.to_string())?;
+    let b_f64 = b.to_dtype(DType::F64).map_err(|e| e.to_string())?;
+    let a_flat: Vec<f64> = a_f64.flatten_all().map_err(|e| e.to_string())?
+        .to_vec1().map_err(|e| e.to_string())?;
+    let b_flat: Vec<f64> = b_f64.flatten_all().map_err(|e| e.to_string())?
+        .to_vec1().map_err(|e| e.to_string())?;
+    if a_flat.len() != b_flat.len() {
+        return Err(format!("countEqual: tensors must have same number of elements, got {} and {}", a_flat.len(), b_flat.len()));
+    }
+    let count = a_flat.iter().zip(b_flat.iter()).filter(|(x, y)| x == y).count();
+    Ok(Value::Int(count as i64))
 }
 
 #[cfg(test)]

@@ -376,3 +376,10 @@ pub crossEntropyLoss(logits: Tensor, targets: Tensor) -> Tensor = __native__("Ca
 # Perform one training step: backward pass + optimizer weight update.
 # Returns the loss value as a Float.
 pub trainStep(opt: Optimizer, loss: Tensor) -> Float = __native__("Candle.trainStep", opt, loss)
+
+# =============================================================================
+# Comparison
+# =============================================================================
+
+# Count matching elements between two tensors (works with any dtype)
+pub countEqual(a: Tensor, b: Tensor) -> Int = __native__("Candle.countEqual", a, b)

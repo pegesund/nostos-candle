@@ -18,22 +18,11 @@ forward(lstm: LSTM, wOut: Tensor, images: Tensor) -> Tensor = {
     linear(last2, wOut)                  # [batch, 10]
 }
 
-# Count how many predictions match labels (element-wise comparison on flat lists)
-countCorrect(preds: List[Float], labels: List[Float], idx: Int, total: Int) -> Int = {
-    if idx >= total { 0 }
-    else {
-        hit = if preds.get(idx) == labels.get(idx) { 1 } else { 0 }
-        hit + countCorrect(preds, labels, idx + 1, total)
-    }
-}
-
 # Evaluate one batch: forward pass, argmax, count correct
 evalBatch(lstm: LSTM, wOut: Tensor, images: Tensor, labels: Tensor) -> Int = {
     logits = forward(lstm, wOut, images)
     preds = squeeze(argmax(logits, 1), 1)
-    predsF = toList(cast(preds, "f32"))
-    labelsF = toList(cast(labels, "f32"))
-    countCorrect(predsF, labelsF, 0, predsF.length())
+    countEqual(preds, labels)
 }
 
 main() = {
