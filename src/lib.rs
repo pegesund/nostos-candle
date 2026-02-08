@@ -10,9 +10,18 @@ use nostos_extension::*;
 use parking_lot::Mutex;
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use tokenizers::Tokenizer;
 
 declare_extension!("candle", "0.1.0", register);
+
+// Auto-incrementing counter for unnamed parameters
+static PARAM_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+fn next_param_name() -> String {
+    let n = PARAM_COUNTER.fetch_add(1, Ordering::Relaxed);
+    format!("_p{}", n)
+}
 
 // Type ID for tensor maps (loaded safetensors)
 const TENSOR_MAP_TYPE_ID: u64 = 2;
@@ -146,11 +155,14 @@ fn register(reg: &mut ExtRegistry) {
     reg.add_fn("Candle.paramMapCreate", "() -> ParamMap", param_map_create);
     reg.add_fn("Candle.paramRandn", "(ParamMap, String, List[Int]) -> Tensor", param_randn);
     reg.add_fn("Candle.paramZeros", "(ParamMap, String, List[Int]) -> Tensor", param_zeros);
+    reg.add_fn("Candle.paramRandnAuto", "(ParamMap, List[Int]) -> Tensor", param_randn_auto);
+    reg.add_fn("Candle.paramZerosAuto", "(ParamMap, List[Int]) -> Tensor", param_zeros_auto);
     reg.add_fn("Candle.paramSave", "(ParamMap, String) -> Int", param_save);
     reg.add_fn("Candle.paramLoad", "(ParamMap, String) -> Int", param_load);
 
     // === Training: Trainable LSTM ===
     reg.add_fn("Candle.lstmTrainable", "(ParamMap, String, Int, Int) -> LSTM", lstm_trainable);
+    reg.add_fn("Candle.lstmTrainableAuto", "(ParamMap, Int, Int) -> LSTM", lstm_trainable_auto);
 
     // === Training: Optimizers ===
     reg.add_fn("Candle.sgd", "(ParamMap, Float) -> Optimizer", optimizer_sgd);
@@ -1587,6 +1599,18 @@ fn param_zeros(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     Ok(tensor_to_value(var))
 }
 
+/// Create a trainable tensor with auto-generated name: paramRandn(params, shape) -> Tensor
+fn param_randn_auto(args: &[Value], ctx: &ExtContext) -> Result<Value, String> {
+    let name = Value::String(Arc::new(next_param_name()));
+    param_randn(&[args[0].clone(), name, args[1].clone()], ctx)
+}
+
+/// Create a trainable tensor (zeros) with auto-generated name: paramZeros(params, shape) -> Tensor
+fn param_zeros_auto(args: &[Value], ctx: &ExtContext) -> Result<Value, String> {
+    let name = Value::String(Arc::new(next_param_name()));
+    param_zeros(&[args[0].clone(), name, args[1].clone()], ctx)
+}
+
 /// Save parameters to safetensors: paramSave(params, path) -> 0
 fn param_save(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let varmap_mtx = value_to_param_map(&args[0])?;
@@ -1619,6 +1643,12 @@ fn lstm_trainable(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
         .map_err(|e| e.to_string())?;
 
     Ok(lstm_to_value(lstm))
+}
+
+/// Create LSTM with trainable weights and auto-generated prefix
+fn lstm_trainable_auto(args: &[Value], ctx: &ExtContext) -> Result<Value, String> {
+    let prefix = Value::String(Arc::new(next_param_name()));
+    lstm_trainable(&[args[0].clone(), prefix, args[1].clone(), args[2].clone()], ctx)
 }
 
 // ==================== Training: Optimizers ====================

@@ -323,11 +323,17 @@ pub dropoutLayer(x: Tensor, p: Float) -> Tensor = {
 # Create an empty parameter map (collects all trainable weights)
 pub paramMapCreate() -> ParamMap = __native__("Candle.paramMapCreate")
 
-# Create a trainable tensor with random normal initialization
+# Create a trainable tensor with random normal initialization (named, for save/load)
 pub paramRandn(params: ParamMap, name: String, shape: List[Int]) -> Tensor = __native__("Candle.paramRandn", params, name, shape)
 
-# Create a trainable tensor initialized to zeros
+# Create a trainable tensor with random normal initialization (auto-named)
+pub paramRandn(params: ParamMap, shape: List[Int]) -> Tensor = __native__("Candle.paramRandnAuto", params, shape)
+
+# Create a trainable tensor initialized to zeros (named, for save/load)
 pub paramZeros(params: ParamMap, name: String, shape: List[Int]) -> Tensor = __native__("Candle.paramZeros", params, name, shape)
+
+# Create a trainable tensor initialized to zeros (auto-named)
+pub paramZeros(params: ParamMap, shape: List[Int]) -> Tensor = __native__("Candle.paramZerosAuto", params, shape)
 
 # Save all parameters to a safetensors file
 pub paramSave(params: ParamMap, path: String) -> Int = __native__("Candle.paramSave", params, path)
@@ -339,9 +345,12 @@ pub paramLoad(params: ParamMap, path: String) -> Int = __native__("Candle.paramL
 # Training: Trainable LSTM
 # =============================================================================
 
-# Create an LSTM with trainable weights registered in the parameter map.
+# Create an LSTM with trainable weights registered in the parameter map (named, for save/load).
 # The prefix namespaces the weights (e.g. "encoder" -> "encoder.weight_ih_l0").
 pub lstmTrainable(params: ParamMap, prefix: String, inputDim: Int, hiddenDim: Int) -> LSTM = __native__("Candle.lstmTrainable", params, prefix, inputDim, hiddenDim)
+
+# Create an LSTM with trainable weights (auto-named)
+pub lstmTrainable(params: ParamMap, inputDim: Int, hiddenDim: Int) -> LSTM = __native__("Candle.lstmTrainableAuto", params, inputDim, hiddenDim)
 
 # =============================================================================
 # Training: Optimizers

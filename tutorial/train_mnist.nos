@@ -36,8 +36,8 @@ main() = {
 
     # Create trainable model
     params = paramMapCreate()
-    lstm = lstmTrainable(params, "lstm", 28, 128)
-    wOut = paramRandn(params, "wOut", [10, 128])
+    lstm = lstmTrainable(params, 28, 128)
+    wOut = paramRandn(params, [10, 128])
 
     opt = adam(params, 0.001)
 
