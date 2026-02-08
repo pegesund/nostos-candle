@@ -153,6 +153,52 @@ Both implementations do the same thing:
 4. Call `trainStep(optimizer, loss)` which runs backpropagation and updates weights
 5. Repeat for all batches, for 3 epochs
 
+### How `trainStep` knows which weights to update
+
+A natural question: `trainStep(opt, loss)` only receives the optimizer and a loss
+tensor — how does it know about the LSTM and linear layer used in the forward pass?
+
+The answer is that **the loss tensor carries the entire computation graph**.
+
+There are three pieces that connect everything:
+
+**1. The parameter map collects trainable weights.**
+`paramMapCreate()` creates a `VarMap` — a container for trainable tensors. When
+you call `lstmTrainable(params, ...)` or `paramRandn(params, "wOut", ...)`, their
+weights are registered as gradient-tracked `Var` objects inside this map.
+
+**2. The optimizer captures those Vars.**
+When you call `adam(params, 0.001)`, the optimizer grabs references to every `Var`
+in the parameter map. It knows which weights exist, but not yet how they're used.
+
+**3. The forward pass builds a computation graph automatically.**
+Every tensor operation — matmul, tanh, sigmoid, add — records itself in a graph
+attached to the resulting tensor. When you compute:
+
+```nostos
+hidden = lstmSeq(lstm, images)           # matmul, sigmoid, tanh at each step
+logits = linear(last, wOut)              # matmul with wOut
+loss = crossEntropyLoss(logits, labels)  # softmax + log
+```
+
+the `loss` tensor ends up holding a chain of references all the way back through
+every operation to the original `Var` weights. This is called **automatic
+differentiation** (autograd).
+
+**4. `trainStep` walks this graph backward.**
+`trainStep(opt, loss)` calls `backward_step(&loss)` which:
+  1. Traces the computation graph stored in `loss` backward to every `Var`
+  2. Computes gradients (dLoss/dWeight) for each `Var` via the chain rule
+  3. Updates each `Var` using Adam's update rule (or SGD, depending on optimizer)
+
+This is the same mechanism as PyTorch's `loss.backward()` + `optimizer.step()`.
+
+It also explains why **LSTM backpropagation through time (BPTT) works for free** —
+the LSTM's internal operations at each of the 28 time steps (matrix multiplies,
+sigmoid gates, tanh activations) are all recorded in the graph. The backward pass
+automatically unrolls through all 28 steps to compute gradients, without any
+special BPTT code.
+
 ### Evaluation
 
 1. Run forward pass on test images in batches of 100
