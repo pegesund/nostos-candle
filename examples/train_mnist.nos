@@ -1,0 +1,119 @@
+# Train LSTM on MNIST digit classification.
+#
+# Treats each 28x28 image as a sequence of 28 rows (28 time steps, 28-dim input).
+# Model: LSTM(28, 128) -> linear(128, 10) on last hidden state.
+#
+# Loads data from safetensors (created by mnist_prepare.py).
+use candle.*
+
+dataPath() -> String = "/tmp/nostos-candle/data/mnist.safetensors"
+
+# Forward pass: LSTM + linear projection to 10 classes
+forward(lstm: LSTM, wOut: Tensor, images: Tensor) -> Tensor = {
+    # images: [batch, 28, 28] — 28 time steps of 28-dim input
+    hidden = lstmSeq(lstm, images)       # [batch, 28, 128]
+    last = narrow(hidden, 1, 27, 1)      # [batch, 1, 128]
+    last2 = squeeze(last, 1)             # [batch, 128]
+    linear(last2, wOut)                  # [batch, 10]
+}
+
+# Count correct predictions by comparing toList outputs
+countCorrect(preds: List[Float], labels: List[Float], idx: Int, total: Int) -> Int = {
+    if idx >= total { 0 }
+    else {
+        hit = if preds.get(idx) == labels.get(idx) { 1 } else { 0 }
+        hit + countCorrect(preds, labels, idx + 1, total)
+    }
+}
+
+# Evaluate accuracy on a batch
+evalBatch(lstm: LSTM, wOut: Tensor, images: Tensor, labels: Tensor) -> Int = {
+    logits = forward(lstm, wOut, images)
+    preds = squeeze(argmax(logits, 1), 1)       # [batch] u32
+    predsF = toList(cast(preds, "f32"))
+    labelsF = toList(cast(labels, "f32"))
+    countCorrect(predsF, labelsF, 0, predsF.length())
+}
+
+main() = {
+    println("Loading MNIST from safetensors...")
+    data = loadSafetensors(dataPath())
+    trainImages = getTensor(data, "train_images")   # [60000, 28, 28]
+    trainLabels = getTensor(data, "train_labels")    # [60000] i32
+    testImages = getTensor(data, "test_images")      # [10000, 28, 28]
+    testLabels = getTensor(data, "test_labels")      # [10000] i32
+
+    println("  Train: " ++ show(tensorShape(trainImages)))
+    println("  Test:  " ++ show(tensorShape(testImages)))
+
+    # Cast labels to u32 for cross-entropy loss
+    trainLabelsU = cast(trainLabels, "u32")
+    testLabelsU = cast(testLabels, "u32")
+
+    # Create trainable model
+    params = paramMapCreate()
+    lstm = lstmTrainable(params, "lstm", 28, 128)
+    wOut = paramRandn(params, "wOut", [10, 128])
+
+    opt = adam(params, 0.001)
+
+    batchSize = 128
+    numEpochs = 3
+    nTrain = 60000
+
+    println("")
+    println("Training LSTM on MNIST:")
+    println("  Model: LSTM(28, 128) -> linear(128, 10)")
+    println("  Optimizer: Adam(lr=0.001)")
+    println("  Batch size: " ++ show(batchSize) ++ ", Epochs: " ++ show(numEpochs))
+    println("")
+
+    var epoch = 0
+    while epoch < numEpochs {
+        var totalLoss = 0.0
+        var nBatches = 0
+        var start = 0
+
+        while start < nTrain {
+            var curBatch = batchSize
+            if start + curBatch > nTrain {
+                curBatch = nTrain - start
+            }
+
+            images = narrow(trainImages, 0, start, curBatch)
+            labels = narrow(trainLabelsU, 0, start, curBatch)
+
+            logits = forward(lstm, wOut, images)
+            loss = crossEntropyLoss(logits, labels)
+            lv = trainStep(opt, loss)
+
+            totalLoss = totalLoss + lv
+            nBatches = nBatches + 1
+            start = start + batchSize
+        }
+
+        avgLoss = totalLoss / toFloat(nBatches)
+        println("  Epoch " ++ show(epoch + 1) ++ "/" ++ show(numEpochs) ++ " - avg loss: " ++ show(avgLoss))
+        epoch = epoch + 1
+    }
+
+    # Evaluate on test set
+    println("")
+    println("Evaluating on test set...")
+    var correct = 0
+    var testStart = 0
+    nTest = 10000
+    evalBatchSize = 100
+
+    while testStart < nTest {
+        images = narrow(testImages, 0, testStart, evalBatchSize)
+        labels = narrow(testLabelsU, 0, testStart, evalBatchSize)
+        correct = correct + evalBatch(lstm, wOut, images, labels)
+        testStart = testStart + evalBatchSize
+    }
+
+    pct = toFloat(correct) * 100.0 / toFloat(nTest)
+    println("  Test accuracy: " ++ show(correct) ++ "/" ++ show(nTest) ++ " = " ++ show(pct) ++ "%")
+
+    0
+}
