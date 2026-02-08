@@ -1,0 +1,30 @@
+# LSTM + Attention example - should produce same output as PyTorch version
+# First run: python3 examples/verify_lstm_attention.py  (generates weights)
+# Then run:  nostos --use candle examples/test_lstm_attention.nos
+
+use candle.*
+
+main() = {
+    model = loadSafetensors("examples/lstm_attention_weights.safetensors")
+
+    # Load LSTM from saved weights (prefix "lstm.", inputDim=4, hiddenDim=4)
+    lstm = lstmFromTensors(model, "lstm.", 4, 4)
+
+    # Load input and attention weights
+    input = getTensor(model, "input_data")
+    wQ = getTensor(model, "attn_wQ")
+    wK = getTensor(model, "attn_wK")
+    wV = getTensor(model, "attn_wV")
+    wO = getTensor(model, "attn_wO")
+
+    # Run combined LSTM + multi-head attention (2 heads)
+    result = lstmAttention(lstm, input, 2, wQ, wK, wV, wO)
+
+    # Also show LSTM-only output for comparison
+    hiddenStates = lstmSeq(lstm, input)
+    println("LSTM hidden states shape: " ++ show(tensorShape(hiddenStates)))
+    println("LSTM hidden states: " ++ show(toList(hiddenStates)))
+
+    println("Final output shape: " ++ show(tensorShape(result)))
+    println("Final output: " ++ show(toList(result)))
+}
