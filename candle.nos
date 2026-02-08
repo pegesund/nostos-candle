@@ -28,6 +28,12 @@ pub fromList(data: List[Float]) -> Tensor = __native__("Candle.fromList", data)
 # Create a tensor from integer list (for token IDs)
 pub fromIntList(data: List[Int]) -> Tensor = __native__("Candle.fromIntList", data)
 
+# Implicit conversion functions (naming convention: {typeLower}From{SourceType})
+# These enable automatic conversion at function call sites:
+#   mseLoss(w, [5.0])  =>  mseLoss(w, tensorFromList([5.0]))
+pub tensorFromList(data: List[Float]) -> Tensor = __native__("Candle.fromList", data)
+pub tensorFromIntList(data: List[Int]) -> Tensor = __native__("Candle.fromIntList", data)
+
 # Create a 1D tensor with values from 0 to n-1
 pub arange(n: Int) -> Tensor = __native__("Candle.arange", n)
 

@@ -4,14 +4,14 @@ use candle.*
 main() = {
     params = paramMapCreate()
     w = paramRandn(params, "w", [1])
-    target = fromList([5.0])
 
     opt = sgd(params, 0.1)
 
     println("Training a single weight to reach 5.0:")
     var i = 0
     while i < 20 {
-        loss = mseLoss(w, target)
+        # Implicit conversion: [5.0] (List[Float]) auto-converts to Tensor
+        loss = mseLoss(w, [5.0])
         lv = trainStep(opt, loss)
         if i % 5 == 0 {
             println("  step " ++ show(i) ++ " loss: " ++ show(lv))

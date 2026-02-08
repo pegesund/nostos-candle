@@ -32,6 +32,34 @@ nostos --use candle your_script.nos
 
 ---
 
+## Implicit Type Conversions
+
+The Nostos compiler can automatically convert `List[Float]` to `Tensor` when you pass a list where a Tensor is expected. This makes code much cleaner:
+
+```nostos
+use candle.*
+
+main() = {
+    params = paramMapCreate()
+    w = paramRandn(params, "w", [1])
+
+    # The compiler auto-converts [5.0] to a Tensor:
+    loss = mseLoss(w, [5.0])
+
+    # Both arguments can be implicit:
+    loss2 = mseLoss([1.0], [2.0])
+
+    # Explicit conversion still works:
+    loss3 = mseLoss(w, tensorFromList([5.0]))
+
+    show(loss)
+}
+```
+
+The compiler uses a naming convention: when it sees `List[Float]` where `Tensor` is expected, it looks for a function called `tensorFromList` in scope and auto-inserts the call. Similarly, `List[Int]` looks for `tensorFromIntList`.
+
+---
+
 ## Tensor Creation
 
 ### `zeros(shape)`
@@ -79,7 +107,7 @@ t = randn([2, 2])  # 2x2 tensor with random values
 
 ---
 
-### `fromList(data)`
+### `fromList(data)` / `tensorFromList(data)`
 Create a tensor from a nested list of numbers.
 
 **Parameters:**
@@ -87,10 +115,16 @@ Create a tensor from a nested list of numbers.
 
 **Returns:** Tensor
 
+**Note:** `tensorFromList` also serves as an implicit conversion function. When you pass a `List[Float]` where a `Tensor` is expected, the compiler auto-inserts `tensorFromList(...)` for you.
+
 **Example:**
 ```nostos
+# Explicit creation:
+t = tensorFromList([1.0, 2.0, 3.0])
 t = fromList([[1.0, 2.0], [3.0, 4.0]])  # 2x2 tensor
-v = fromList([1.0, 2.0, 3.0])           # 1D tensor
+
+# Implicit conversion (compiler inserts tensorFromList automatically):
+loss = mseLoss(w, [5.0])    # equivalent to mseLoss(w, tensorFromList([5.0]))
 ```
 
 ---

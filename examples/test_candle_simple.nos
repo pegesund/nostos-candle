@@ -3,8 +3,14 @@
 use candle.*
 
 main() = {
-    t = fromList([1.0, 2.0, 3.0])
+    # tensorFromList is the explicit conversion function
+    t = tensorFromList([1.0, 2.0, 3.0])
     println("Tensor created!")
     println(tensorShape(t))
+
+    # You can also pass lists directly where Tensor is expected
+    # (the compiler auto-inserts tensorFromList for you):
+    shape = tensorShape(tensorFromList([10.0, 20.0]))
+    println(shape)
     0
 }
