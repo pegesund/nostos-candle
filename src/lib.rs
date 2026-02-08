@@ -833,10 +833,10 @@ fn create_attention_mask(args: &[Value], _ctx: &ExtContext) -> Result<Value, Str
     let pad_id = args[1].as_i64()? as f32;
 
     // token_ids: [batch, seq]
-    let token_f32 = token_ids.to_dtype(DType::F32).map_err(|e| e.to_string())?;
+    let _token_f32 = token_ids.to_dtype(DType::F32).map_err(|e| e.to_string())?;
 
     // Create mask: 1.0 where token != pad_id, 0.0 where token == pad_id
-    let pad_tensor = Tensor::new(&[pad_id], &Device::Cpu).map_err(|e| e.to_string())?;
+    let _pad_tensor = Tensor::new(&[pad_id], &Device::Cpu).map_err(|e| e.to_string())?;
 
     // We need to compare and create mask
     // Since Candle doesn't have direct != comparison, we'll use a different approach:
