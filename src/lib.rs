@@ -1681,7 +1681,9 @@ fn loss_mse(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
 fn loss_cross_entropy(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let logits = value_to_tensor(&args[0])?;
     let targets = value_to_tensor(&args[1])?;
-    let l = loss::cross_entropy(logits, targets).map_err(|e| e.to_string())?;
+    // Auto-cast targets to u32 (candle requires u32 class indices)
+    let targets = targets.to_dtype(DType::U32).map_err(|e| e.to_string())?;
+    let l = loss::cross_entropy(logits, &targets).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(l))
 }
 

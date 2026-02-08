@@ -34,10 +34,6 @@ main() = {
     println("  Train: " ++ show(tensorShape(trainImages)))
     println("  Test:  " ++ show(tensorShape(testImages)))
 
-    # Cast labels to u32 (required by cross-entropy loss)
-    trainLabelsU = cast(trainLabels, "u32")
-    testLabelsU = cast(testLabels, "u32")
-
     # Create trainable model
     params = paramMapCreate()
     lstm = lstmTrainable(params, "lstm", 28, 128)
@@ -64,7 +60,7 @@ main() = {
         while start < nTrain {
             curBatch = min(batchSize, nTrain - start)
             images = trainImages.sliceDim(0, start, curBatch)
-            labels = trainLabelsU.sliceDim(0, start, curBatch)
+            labels = trainLabels.sliceDim(0, start, curBatch)
 
             logits = forward(lstm, wOut, images)
             loss = crossEntropyLoss(logits, labels)
@@ -89,7 +85,7 @@ main() = {
 
     while testStart < nTest {
         images = testImages.sliceDim(0, testStart, evalBatchSize)
-        labels = testLabelsU.sliceDim(0, testStart, evalBatchSize)
+        labels = testLabels.sliceDim(0, testStart, evalBatchSize)
         correct = correct + evalBatch(lstm, wOut, images, labels)
         testStart = testStart + evalBatchSize
     }
