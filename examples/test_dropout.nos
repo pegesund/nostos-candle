@@ -1,0 +1,37 @@
+# Test dropout layer
+# Shows: LSTM -> dropout -> attention pipeline
+
+use candle.*
+
+main() = {
+    # Create LSTM (inputDim=8, hiddenDim=8)
+    lstm = lstmCreate(8, 8)
+
+    # Random input [batch=1, seq=4, inputDim=8]
+    input = randn([1, 4, 8])
+
+    # LSTM forward
+    hidden = lstmSeq(lstm, input)
+    println("LSTM output shape: " ++ show(tensorShape(hidden)))
+
+    # Dropout with p=0.3
+    dropped = dropoutLayer(hidden, 0.3)
+    println("After dropout shape: " ++ show(tensorShape(dropped)))
+
+    # Count zeros to verify dropout is working
+    flatHidden = toList(hidden)
+    flatDropped = toList(dropped)
+    println("Dropout is active (values differ): " ++ show(flatHidden != flatDropped))
+
+    # Attention weights (hiddenDim=8, 2 heads)
+    wQ = randn([8, 8])
+    wK = randn([8, 8])
+    wV = randn([8, 8])
+    wO = randn([8, 8])
+
+    # Full pipeline: LSTM -> dropout -> attention
+    out = multiHeadAttention(dropped, 2, wQ, wK, wV, wO)
+    println("Final output shape: " ++ show(tensorShape(out)))
+    println("Output sample: " ++ show(toList(out)))
+    0
+}

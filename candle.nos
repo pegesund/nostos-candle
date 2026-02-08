@@ -281,3 +281,31 @@ pub multiHeadAttention(x: Tensor, numHeads: Int, wQ: Tensor, wK: Tensor, wV: Ten
 # Runs LSTM, then applies attention over hidden states
 # input: [batch, seq, inputDim] -> attended output [batch, seq, hiddenDim]
 pub lstmAttention(lstm: LSTM, input: Tensor, numHeads: Int, wQ: Tensor, wK: Tensor, wV: Tensor, wO: Tensor) -> Tensor = __native__("Candle.lstmAttention", lstm, input, numHeads, wQ, wK, wV, wO)
+
+# =============================================================================
+# Primitives for building layers in Nostos
+# =============================================================================
+
+# Sigmoid activation
+pub sigmoid(t: Tensor) -> Tensor = __native__("Candle.sigmoid", t)
+
+# Uniform random tensor in [0, 1]
+pub randUniform(shape: List[Int]) -> Tensor = __native__("Candle.randUniform", shape)
+
+# Element-wise greater than scalar (returns 0.0/1.0 float mask)
+pub gtScalar(t: Tensor, val: Float) -> Tensor = __native__("Candle.gtScalar", t, val)
+
+# =============================================================================
+# Dropout Layer (implemented in Nostos)
+# =============================================================================
+
+# Training dropout - randomly zeros elements with probability p and scales by 1/(1-p)
+# Use this between layers during training:
+#   h = lstmSeq(lstm, input)
+#   h = dropoutLayer(h, 0.1)
+#   out = multiHeadAttention(h, numHeads, wQ, wK, wV, wO)
+pub dropoutLayer(x: Tensor, p: Float) -> Tensor = {
+    mask = gtScalar(randUniform(tensorShape(x)), p)
+    scale = fromList([1.0 / (1.0 - p)])
+    tensorMul(tensorMul(x, mask), scale)
+}

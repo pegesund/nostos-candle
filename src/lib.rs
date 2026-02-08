@@ -126,6 +126,11 @@ fn register(reg: &mut ExtRegistry) {
     reg.add_fn("Candle.scaledDotProductAttention", "(Tensor, Tensor, Tensor) -> Tensor", scaled_dot_product_attention);
     reg.add_fn("Candle.multiHeadAttention", "(Tensor, Int, Tensor, Tensor, Tensor, Tensor) -> Tensor", multi_head_attention);
     reg.add_fn("Candle.lstmAttention", "(LSTM, Tensor, Int, Tensor, Tensor, Tensor, Tensor) -> Tensor", lstm_attention);
+
+    // === Primitives for Nostos-level layers ===
+    reg.add_fn("Candle.sigmoid", "(Tensor) -> Tensor", tensor_sigmoid);
+    reg.add_fn("Candle.randUniform", "(List[Int]) -> Tensor", tensor_rand_uniform);
+    reg.add_fn("Candle.gtScalar", "(Tensor, Float) -> Tensor", tensor_gt_scalar);
 }
 
 // Type ID for tensors in GcNativeHandle
@@ -1404,6 +1409,34 @@ fn lstm_attention(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     Ok(tensor_to_value(result))
 }
 
+// ==================== Primitives for Nostos-level layers ====================
+
+/// Sigmoid activation: sigmoid(x) = 1 / (1 + exp(-x))
+fn tensor_sigmoid(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = candle_nn::ops::sigmoid(t).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Uniform random tensor in [0, 1]: randUniform([2, 3]) -> Tensor
+fn tensor_rand_uniform(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let shape = value_to_shape(&args[0])?;
+    let tensor = Tensor::rand(0f32, 1f32, shape.as_slice(), &Device::Cpu)
+        .map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(tensor))
+}
+
+/// Element-wise greater than scalar, returns float 0.0/1.0 mask
+fn tensor_gt_scalar(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let scalar = args[1].as_f64()? as f32;
+    let scalar_t = Tensor::new(&[scalar], &Device::Cpu).map_err(|e| e.to_string())?;
+    let scalar_broadcast = scalar_t.broadcast_as(t.shape()).map_err(|e| e.to_string())?;
+    let mask = t.gt(&scalar_broadcast).map_err(|e| e.to_string())?;
+    let mask_f32 = mask.to_dtype(DType::F32).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(mask_f32))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1553,6 +1586,36 @@ mod tests {
         ).unwrap();
         let t = value_to_tensor(&result).unwrap();
         assert_eq!(t.dims(), &[1, 5, 8]);
+    }
+
+    #[test]
+    fn test_sigmoid() {
+        let ctx = make_ctx();
+        let data = Value::list(vec![Value::Float(0.0), Value::Float(100.0), Value::Float(-100.0)]);
+        let t = tensor_from_list(&[data], &ctx).unwrap();
+        let result = tensor_sigmoid(&[t], &ctx).unwrap();
+        let vals: Vec<f32> = value_to_tensor(&result).unwrap().flatten_all().unwrap().to_vec1().unwrap();
+        assert!((vals[0] - 0.5).abs() < 1e-5);     // sigmoid(0) = 0.5
+        assert!((vals[1] - 1.0).abs() < 1e-5);     // sigmoid(100) ≈ 1.0
+        assert!(vals[2].abs() < 1e-5);              // sigmoid(-100) ≈ 0.0
+    }
+
+    #[test]
+    fn test_rand_uniform_and_gt_scalar() {
+        let ctx = make_ctx();
+        let shape = Value::list(vec![Value::Int(1000)]);
+        let t = tensor_rand_uniform(&[shape], &ctx).unwrap();
+        let vals: Vec<f32> = value_to_tensor(&t).unwrap().flatten_all().unwrap().to_vec1().unwrap();
+        // All values should be in [0, 1]
+        assert!(vals.iter().all(|&v| v >= 0.0 && v <= 1.0));
+
+        // gtScalar with threshold 0.5 should zero out ~half
+        let mask = tensor_gt_scalar(&[t, Value::Float(0.5)], &ctx).unwrap();
+        let mask_vals: Vec<f32> = value_to_tensor(&mask).unwrap().flatten_all().unwrap().to_vec1().unwrap();
+        assert!(mask_vals.iter().all(|&v| v == 0.0 || v == 1.0));
+        let ones_count: usize = mask_vals.iter().filter(|&&v| v == 1.0).count();
+        // Should be roughly 500 ± 100
+        assert!(ones_count > 350 && ones_count < 650, "Got {} ones out of 1000", ones_count);
     }
 
     #[test]
