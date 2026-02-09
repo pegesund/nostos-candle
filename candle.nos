@@ -155,6 +155,11 @@ pub forwardEval(layer: BatchNorm2D, input: Tensor) -> Tensor = __native__("Candl
 # Reshape tensor to new shape
 pub reshape(t: Tensor, newShape: List[Int]) -> Tensor = __native__("Candle.reshape", t, newShape)
 
+# Flatten all dimensions from fromDim onward into one.
+#   [batch, 64, 7, 7].flattenFrom(1) -> [batch, 3136]
+#   [64, 7, 7].flattenFrom(0) -> [3136]
+pub flattenFrom(t: Tensor, fromDim: Int) -> Tensor = __native__("Candle.flatten", t, fromDim)
+
 # Transpose (swap) two dimensions
 pub swapDims(t: Tensor, dim1: Int, dim2: Int) -> Tensor = __native__("Candle.transpose", t, dim1, dim2)
 
@@ -482,3 +487,50 @@ pub lastOf(t: Tensor, dim: Int) -> Tensor = pick(t, dim, -1)
 # Slice a range along a dimension, keeping that dimension.
 #   images.sliceDim(0, 100, 32)  on [60000, 28, 28] -> [32, 28, 28]
 pub sliceDim(t: Tensor, dim: Int, start: Int, len: Int) -> Tensor = narrow(t, dim, start, len)
+
+# =============================================================================
+# Batch Iteration
+# =============================================================================
+
+# Iterate over (data, labels) in batches, return average of fn results.
+# Use for training loops where fn returns the loss.
+#   avgLoss = eachBatch(images, labels, 64, (imgs, lbls) => {
+#       logits = model(imgs)
+#       loss = crossEntropyLoss(logits, lbls)
+#       trainStep(opt, loss)
+#   })
+pub eachBatch(data: Tensor, labels: Tensor, batchSize: Int, fn: (Tensor, Tensor) -> Float) -> Float = {
+    n = tensorShape(data)[0]
+    var total = 0.0
+    var count = 0
+    var start = 0
+    while start < n {
+        curBatch = min(batchSize, n - start)
+        batchData = data.sliceDim(0, start, curBatch)
+        batchLabels = labels.sliceDim(0, start, curBatch)
+        total = total + fn(batchData, batchLabels)
+        count = count + 1
+        start = start + batchSize
+    }
+    total / toFloat(count)
+}
+
+# Iterate over (data, labels) in batches, return sum of fn results.
+# Use for eval loops where fn returns a count (e.g. correct predictions).
+#   correct = eachBatchCount(images, labels, 100, (imgs, lbls) => {
+#       preds = argmax(model(imgs), 1).squeeze(1)
+#       countEqual(preds, lbls)
+#   })
+pub eachBatchCount(data: Tensor, labels: Tensor, batchSize: Int, fn: (Tensor, Tensor) -> Int) -> Int = {
+    n = tensorShape(data)[0]
+    var total = 0
+    var start = 0
+    while start < n {
+        curBatch = min(batchSize, n - start)
+        batchData = data.sliceDim(0, start, curBatch)
+        batchLabels = labels.sliceDim(0, start, curBatch)
+        total = total + fn(batchData, batchLabels)
+        start = start + batchSize
+    }
+    total
+}

@@ -13,13 +13,6 @@ predict(lstm: LSTM, wOut: Tensor, images: Tensor) -> Tensor = {
     linear(last, wOut)                   # [batch, 10]
 }
 
-# Evaluate one batch: forward pass, argmax, count correct
-evalBatch(lstm: LSTM, wOut: Tensor, images: Tensor, labels: Tensor) -> Int = {
-    logits = predict(lstm, wOut, images)
-    preds = argmax(logits, 1).squeeze(1)
-    countEqual(preds, labels)
-}
-
 main() = {
     println("Loading MNIST from safetensors...")
     data = loadSafetensors("tutorial/data/mnist.safetensors")
@@ -27,9 +20,6 @@ main() = {
     trainLabels = getTensor(data, "train_labels")    # [60000]
     testImages = getTensor(data, "test_images")      # [10000, 28, 28]
     testLabels = getTensor(data, "test_labels")      # [10000]
-
-    nTrain = tensorShape(trainImages)[0]
-    nTest = tensorShape(testImages)[0]
 
     println("  Train: " ++ show(tensorShape(trainImages)))
     println("  Test:  " ++ show(tensorShape(testImages)))
@@ -53,25 +43,11 @@ main() = {
 
     var epoch = 0
     while epoch < numEpochs {
-        var totalLoss = 0.0
-        var nBatches = 0
-        var start = 0
-
-        while start < nTrain {
-            curBatch = min(batchSize, nTrain - start)
-            images = trainImages.sliceDim(0, start, curBatch)
-            labels = trainLabels.sliceDim(0, start, curBatch)
-
+        avgLoss = eachBatch(trainImages, trainLabels, batchSize, (images, labels) => {
             logits = predict(lstm, wOut, images)
             loss = crossEntropyLoss(logits, labels)
-            lv = trainStep(opt, loss)
-
-            totalLoss = totalLoss + lv
-            nBatches = nBatches + 1
-            start = start + batchSize
-        }
-
-        avgLoss = totalLoss / toFloat(nBatches)
+            trainStep(opt, loss)
+        })
         println("  Epoch " ++ show(epoch + 1) ++ "/" ++ show(numEpochs) ++ " - avg loss: " ++ show(avgLoss))
         epoch = epoch + 1
     }
@@ -79,17 +55,13 @@ main() = {
     # Evaluate on test set
     println("")
     println("Evaluating on test set...")
-    var correct = 0
-    var testStart = 0
-    evalBatchSize = 100
+    correct = eachBatchCount(testImages, testLabels, 100, (images, labels) => {
+        logits = predict(lstm, wOut, images)
+        preds = argmax(logits, 1).squeeze(1)
+        countEqual(preds, labels)
+    })
 
-    while testStart < nTest {
-        images = testImages.sliceDim(0, testStart, evalBatchSize)
-        labels = testLabels.sliceDim(0, testStart, evalBatchSize)
-        correct = correct + evalBatch(lstm, wOut, images, labels)
-        testStart = testStart + evalBatchSize
-    }
-
+    nTest = tensorShape(testImages)[0]
     pct = toFloat(correct) * 100.0 / toFloat(nTest)
     println("  Test accuracy: " ++ show(correct) ++ "/" ++ show(nTest) ++ " = " ++ show(pct) ++ "%")
 

@@ -95,6 +95,7 @@ fn register(reg: &mut ExtRegistry) {
 
     // === Shape operations ===
     reg.add_fn("Candle.reshape", "(Tensor, List[Int]) -> Tensor", tensor_reshape);
+    reg.add_fn("Candle.flatten", "(Tensor, Int) -> Tensor", tensor_flatten);
     reg.add_fn("Candle.transpose", "(Tensor, Int, Int) -> Tensor", tensor_transpose);
     reg.add_fn("Candle.squeeze", "(Tensor, Int) -> Tensor", tensor_squeeze);
     reg.add_fn("Candle.unsqueeze", "(Tensor, Int) -> Tensor", tensor_unsqueeze);
@@ -512,6 +513,17 @@ fn tensor_reshape(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let t = value_to_tensor(&args[0])?;
     let shape = value_to_shape(&args[1])?;
     let result = t.reshape(shape.as_slice()).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+fn tensor_flatten(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let from_dim = args[1].as_i64()? as usize;
+    let shape = t.shape().dims();
+    let mut new_shape: Vec<usize> = shape[..from_dim].to_vec();
+    let flat_size: usize = shape[from_dim..].iter().product();
+    new_shape.push(flat_size);
+    let result = t.reshape(new_shape.as_slice()).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
