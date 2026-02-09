@@ -7,7 +7,7 @@
 use candle.*
 
 # Forward pass: LSTM over 28 rows, take last hidden state, project to 10 classes
-forward(lstm: LSTM, wOut: Tensor, images: Tensor) -> Tensor = {
+predict(lstm: LSTM, wOut: Tensor, images: Tensor) -> Tensor = {
     hidden = lstmSeq(lstm, images)       # [batch, 28, 128]
     last = hidden.lastOf(1)              # [batch, 128]
     linear(last, wOut)                   # [batch, 10]
@@ -15,7 +15,7 @@ forward(lstm: LSTM, wOut: Tensor, images: Tensor) -> Tensor = {
 
 # Evaluate one batch: forward pass, argmax, count correct
 evalBatch(lstm: LSTM, wOut: Tensor, images: Tensor, labels: Tensor) -> Int = {
-    logits = forward(lstm, wOut, images)
+    logits = predict(lstm, wOut, images)
     preds = argmax(logits, 1).squeeze(1)
     countEqual(preds, labels)
 }
@@ -62,7 +62,7 @@ main() = {
             images = trainImages.sliceDim(0, start, curBatch)
             labels = trainLabels.sliceDim(0, start, curBatch)
 
-            logits = forward(lstm, wOut, images)
+            logits = predict(lstm, wOut, images)
             loss = crossEntropyLoss(logits, labels)
             lv = trainStep(opt, loss)
 
