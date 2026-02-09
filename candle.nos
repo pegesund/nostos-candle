@@ -141,6 +141,21 @@ pub forward(layer: Linear, input: Tensor) -> Tensor = __native__("Candle.linearF
 #   batchNormLayer(params, numFeatures) -> BatchNorm2D
 pub batchNormLayer(params: ParamMap, numFeatures: Int) -> BatchNorm2D = __native__("Candle.batchNormLayer", params, numFeatures)
 
+# Absolute value of each element
+pub tensorAbs(t: Tensor) -> Tensor = __native__("Candle.abs", t)
+
+# Clamp (clip) values to [lo, hi] range
+#   t.tensorClamp(-1.0, 1.0) clamps all values between -1 and 1
+pub tensorClamp(t: Tensor, lo: Float, hi: Float) -> Tensor = __native__("Candle.clamp", t, lo, hi)
+
+# Create a trainable Embedding layer (lookup table).
+#   embeddingLayer(params, vocabSize, embedDim) -> Embedding
+pub embeddingLayer(params: ParamMap, vocabSize: Int, embedDim: Int) -> Embedding = __native__("Candle.embeddingLayer", params, vocabSize, embedDim)
+
+# Forward pass through Embedding: indices [batch, seq] -> [batch, seq, embedDim]
+# Indices are auto-cast to u32.
+pub forward(layer: Embedding, indices: Tensor) -> Tensor = __native__("Candle.embeddingForward", layer, indices)
+
 # Forward pass through BatchNorm2D (training mode — uses batch stats, updates running stats).
 #   Input: [batch, channels, H, W], channels must match numFeatures.
 pub forward(layer: BatchNorm2D, input: Tensor) -> Tensor = __native__("Candle.bnForward", layer, input)

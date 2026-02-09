@@ -52,6 +52,9 @@ const LINEAR_TYPE_ID: u64 = 9;
 // Type ID for BatchNorm layers
 const BATCH_NORM_TYPE_ID: u64 = 10;
 
+// Type ID for Embedding layers
+const EMBEDDING_TYPE_ID: u64 = 11;
+
 fn register(reg: &mut ExtRegistry) {
     // === Declare opaque types ===
     reg.add_opaque_type("Tensor");
@@ -92,6 +95,13 @@ fn register(reg: &mut ExtRegistry) {
     reg.add_fn("Candle.neg", "(Tensor) -> Tensor", tensor_neg);
     reg.add_fn("Candle.cos", "(Tensor) -> Tensor", tensor_cos);
     reg.add_fn("Candle.sin", "(Tensor) -> Tensor", tensor_sin);
+    reg.add_fn("Candle.abs", "(Tensor) -> Tensor", tensor_abs);
+    reg.add_fn("Candle.clamp", "(Tensor, Float, Float) -> Tensor", tensor_clamp);
+
+    // === Trainable Embedding ===
+    reg.add_opaque_type("Embedding");
+    reg.add_fn("Candle.embeddingLayer", "(ParamMap, Int, Int) -> Embedding", embedding_layer_create);
+    reg.add_fn("Candle.embeddingForward", "(Embedding, Tensor) -> Tensor", embedding_layer_forward);
 
     // === Shape operations ===
     reg.add_fn("Candle.reshape", "(Tensor, List[Int]) -> Tensor", tensor_reshape);
@@ -485,6 +495,20 @@ fn tensor_cos(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
 fn tensor_sin(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
     let t = value_to_tensor(&args[0])?;
     let result = t.sin().map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+fn tensor_abs(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let result = t.abs().map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+fn tensor_clamp(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let t = value_to_tensor(&args[0])?;
+    let lo = args[1].as_f64()?;
+    let hi = args[2].as_f64()?;
+    let result = t.clamp(lo, hi).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
@@ -1367,6 +1391,55 @@ fn batch_norm_forward_eval(args: &[Value], _ctx: &ExtContext) -> Result<Value, S
     let bn = value_to_batch_norm(&args[0])?;
     let input = value_to_tensor(&args[1])?;
     let result = bn.forward_t(input, false).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+// ==================== Embedding ====================
+
+fn embedding_cleanup(ptr: usize, type_id: u64) {
+    if type_id == EMBEDDING_TYPE_ID && ptr != 0 {
+        unsafe { let _ = Box::from_raw(ptr as *mut candle_nn::Embedding); }
+    }
+}
+
+fn embedding_to_value(emb: candle_nn::Embedding) -> Value {
+    Value::gc_handle(Box::new(emb), EMBEDDING_TYPE_ID, embedding_cleanup)
+}
+
+fn value_to_embedding(v: &Value) -> Result<&candle_nn::Embedding, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != EMBEDDING_TYPE_ID {
+        return Err(format!("Expected Embedding (type_id={}), got type_id={}", EMBEDDING_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 { return Err("Embedding handle is null".to_string()); }
+    Ok(unsafe { &*(handle.ptr as *const candle_nn::Embedding) })
+}
+
+/// Create trainable Embedding layer: embeddingLayer(params, vocabSize, embedDim) -> Embedding
+fn embedding_layer_create(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let vocab_size = args[1].as_i64()? as usize;
+    let embed_dim = args[2].as_i64()? as usize;
+
+    let name = next_param_name();
+    let varmap = varmap_mtx.lock();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
+    let vb = vb.pp(&name);
+    let emb = candle_nn::embedding(vocab_size, embed_dim, vb)
+        .map_err(|e| e.to_string())?;
+    Ok(embedding_to_value(emb))
+}
+
+/// Forward pass through Embedding layer: indices [batch, seq] -> [batch, seq, embedDim]
+fn embedding_layer_forward(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let emb = value_to_embedding(&args[0])?;
+    let indices = value_to_tensor(&args[1])?;
+    let indices_u32 = if indices.dtype() != DType::U32 {
+        indices.to_dtype(DType::U32).map_err(|e| e.to_string())?
+    } else {
+        indices.clone()
+    };
+    let result = emb.forward(&indices_u32).map_err(|e| e.to_string())?;
     Ok(tensor_to_value(result))
 }
 
