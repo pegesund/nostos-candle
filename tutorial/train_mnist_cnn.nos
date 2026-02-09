@@ -8,20 +8,12 @@
 # Run: nostos --use candle tutorial/train_mnist_cnn.nos
 use candle.*
 
-# Forward pass through CNN (training mode — BN uses batch stats)
-cnnForward(conv1: Conv2D, bn1: BatchNorm2D, conv2: Conv2D, bn2: BatchNorm2D, fc1: Linear, fc2: Linear, images: Tensor) -> Tensor = {
+# Forward pass through CNN.
+# training=True uses batch stats for BN, training=False uses running stats.
+cnnForward(conv1: Conv2D, bn1: BatchNorm2D, conv2: Conv2D, bn2: BatchNorm2D, fc1: Linear, fc2: Linear, images: Tensor, training: Bool) -> Tensor = {
     x = unsqueeze(images, 1)
-    x1 = maxPool2d(relu(bn1.forward(conv1.forward(x))), 2)
-    x2 = maxPool2d(relu(bn2.forward(conv2.forward(x1))), 2)
-    h = relu(fc1.forward(x2.flattenFrom(1)))
-    fc2.forward(h)
-}
-
-# Forward pass (eval mode — BN uses accumulated running stats)
-cnnEval(conv1: Conv2D, bn1: BatchNorm2D, conv2: Conv2D, bn2: BatchNorm2D, fc1: Linear, fc2: Linear, images: Tensor) -> Tensor = {
-    x = unsqueeze(images, 1)
-    x1 = maxPool2d(relu(bn1.forwardEval(conv1.forward(x))), 2)
-    x2 = maxPool2d(relu(bn2.forwardEval(conv2.forward(x1))), 2)
+    x1 = maxPool2d(relu(bn1.forward(conv1.forward(x), training)), 2)
+    x2 = maxPool2d(relu(bn2.forward(conv2.forward(x1), training)), 2)
     h = relu(fc1.forward(x2.flattenFrom(1)))
     fc2.forward(h)
 }
@@ -61,7 +53,7 @@ main() = {
     var epoch = 0
     while epoch < numEpochs {
         avgLoss = eachBatch(trainImages, trainLabels, batchSize, (images, labels) => {
-            logits = cnnForward(conv1, bn1, conv2, bn2, fc1, fc2, images)
+            logits = cnnForward(conv1, bn1, conv2, bn2, fc1, fc2, images, true)
             loss = crossEntropyLoss(logits, labels)
             trainStep(opt, loss)
         })
@@ -69,11 +61,11 @@ main() = {
         epoch = epoch + 1
     }
 
-    # Evaluate on test set (using eval mode for batch norm)
+    # Evaluate on test set (eval mode for batch norm)
     println("")
     println("Evaluating on test set...")
     correct = eachBatchCount(testImages, testLabels, 100, (images, labels) => {
-        logits = cnnEval(conv1, bn1, conv2, bn2, fc1, fc2, images)
+        logits = cnnForward(conv1, bn1, conv2, bn2, fc1, fc2, images, false)
         preds = argmax(logits, 1).squeeze(1)
         countEqual(preds, labels)
     })

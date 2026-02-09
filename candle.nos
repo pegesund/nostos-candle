@@ -148,6 +148,12 @@ pub forward(layer: BatchNorm2D, input: Tensor) -> Tensor = __native__("Candle.bn
 # Forward pass through BatchNorm2D (eval mode — uses accumulated running stats).
 pub forwardEval(layer: BatchNorm2D, input: Tensor) -> Tensor = __native__("Candle.bnForwardEval", layer, input)
 
+# Forward pass with explicit training flag.
+#   bn.forward(x, true)  = training mode (batch stats, updates running stats)
+#   bn.forward(x, false) = eval mode (running stats)
+pub forward(layer: BatchNorm2D, input: Tensor, training: Bool) -> Tensor =
+    if training { forward(layer, input) } else { forwardEval(layer, input) }
+
 # =============================================================================
 # Shape Operations
 # =============================================================================
