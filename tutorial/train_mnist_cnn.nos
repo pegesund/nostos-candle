@@ -50,16 +50,14 @@ main() = {
     println("  Batch size: " ++ show(batchSize) ++ ", Epochs: " ++ show(numEpochs))
     println("")
 
-    var epoch = 0
-    while epoch < numEpochs {
+    range(0, numEpochs).each(epoch => {
         avgLoss = eachBatch(trainImages, trainLabels, batchSize, (images, labels) => {
             logits = cnnForward(conv1, bn1, conv2, bn2, fc1, fc2, images, true)
             loss = crossEntropyLoss(logits, labels)
             trainStep(opt, loss)
         })
         println("  Epoch " ++ show(epoch + 1) ++ "/" ++ show(numEpochs) ++ " - avg loss: " ++ show(avgLoss))
-        epoch = epoch + 1
-    }
+    })
 
     # Evaluate on test set (eval mode for batch norm)
     println("")
