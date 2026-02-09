@@ -94,6 +94,61 @@ pub tensorSin(t: Tensor) -> Tensor = __native__("Candle.sin", t)
 pub softmax(t: Tensor, dim: Int) -> Tensor = __native__("Candle.softmax", t, dim)
 
 # =============================================================================
+# Convolution & Pooling (low-level)
+# =============================================================================
+
+# 2D convolution: input [batch, channels, H, W], kernel [outC, inC, kH, kW]
+#   conv2d(input, kernel, stride, padding)
+pub conv2d(input: Tensor, kernel: Tensor, stride: Int, padding: Int) -> Tensor = __native__("Candle.conv2d", input, kernel, stride, padding)
+
+# 2D convolution with bias: adds bias [outChannels] after convolution
+#   conv2dBias(input, kernel, bias, stride, padding)
+pub conv2dBias(input: Tensor, kernel: Tensor, bias: Tensor, stride: Int, padding: Int) -> Tensor = __native__("Candle.conv2dBias", input, kernel, bias, stride, padding)
+
+# Max pooling 2D: reduces spatial dims by factor of kernelSize
+#   maxPool2d(input, 2) on [batch, C, 28, 28] -> [batch, C, 14, 14]
+pub maxPool2d(input: Tensor, kernelSize: Int) -> Tensor = __native__("Candle.maxPool2d", input, kernelSize)
+
+# =============================================================================
+# Trainable Layers (proper Kaiming initialization)
+# =============================================================================
+#
+# These create layers with correctly initialized weights, registered
+# in a parameter map for training. Use these instead of raw paramRandn.
+#
+#   params = paramMapCreate()
+#   conv1 = convLayer(params, 1, 32, 3, 1)    # 1->32 channels, 3x3 kernel, pad=1
+#   fc = linearLayer(params, 128, 10)          # 128->10
+#
+#   x = conv1.forward(input)                   # UFCS forward pass
+#   x = fc.forward(flat)
+
+# Create a trainable Conv2D layer with Kaiming-initialized weights and bias.
+#   convLayer(params, inChannels, outChannels, kernelSize, padding) -> Conv2D
+pub convLayer(params: ParamMap, inChannels: Int, outChannels: Int, kernelSize: Int, padding: Int) -> Conv2D = __native__("Candle.convLayer", params, inChannels, outChannels, kernelSize, padding)
+
+# Forward pass through a Conv2D layer: input [batch, C, H, W] -> output [batch, Cout, Hout, Wout]
+pub forward(layer: Conv2D, input: Tensor) -> Tensor = __native__("Candle.convForward", layer, input)
+
+# Create a trainable Linear layer (no bias) with Kaiming-initialized weights.
+#   linearLayer(params, inDim, outDim) -> Linear
+pub linearLayer(params: ParamMap, inDim: Int, outDim: Int) -> Linear = __native__("Candle.linearLayerAuto", params, inDim, outDim)
+
+# Forward pass through a Linear layer: input [batch, inDim] -> output [batch, outDim]
+pub forward(layer: Linear, input: Tensor) -> Tensor = __native__("Candle.linearForward", layer, input)
+
+# Create a BatchNorm2D layer with learnable scale/bias parameters.
+#   batchNormLayer(params, numFeatures) -> BatchNorm2D
+pub batchNormLayer(params: ParamMap, numFeatures: Int) -> BatchNorm2D = __native__("Candle.batchNormLayer", params, numFeatures)
+
+# Forward pass through BatchNorm2D (training mode — uses batch stats, updates running stats).
+#   Input: [batch, channels, H, W], channels must match numFeatures.
+pub forward(layer: BatchNorm2D, input: Tensor) -> Tensor = __native__("Candle.bnForward", layer, input)
+
+# Forward pass through BatchNorm2D (eval mode — uses accumulated running stats).
+pub forwardEval(layer: BatchNorm2D, input: Tensor) -> Tensor = __native__("Candle.bnForwardEval", layer, input)
+
+# =============================================================================
 # Shape Operations
 # =============================================================================
 

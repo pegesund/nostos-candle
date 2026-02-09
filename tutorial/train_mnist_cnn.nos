@@ -1,0 +1,127 @@
+# Train CNN on MNIST digit classification (Nostos + Candle).
+#
+# Architecture:
+#   [1, 28, 28] -> Conv(32, 3x3) -> BN -> ReLU -> MaxPool(2)   [32, 14, 14]
+#               -> Conv(64, 3x3) -> BN -> ReLU -> MaxPool(2)   [64, 7, 7]
+#               -> Flatten [3136] -> Linear(128) -> ReLU -> Linear(10)
+#
+# Run: nostos --use candle tutorial/train_mnist_cnn.nos
+use candle.*
+
+# Forward pass through CNN (training mode — BN uses batch stats)
+cnnForward(conv1: Conv2D, bn1: BatchNorm2D, conv2: Conv2D, bn2: BatchNorm2D, fc1: Linear, fc2: Linear, images: Tensor) -> Tensor = {
+    # Add channel dim: [batch, 28, 28] -> [batch, 1, 28, 28]
+    x = unsqueeze(images, 1)
+
+    # Conv block 1: [batch, 1, 28, 28] -> [batch, 32, 14, 14]
+    x1 = maxPool2d(relu(bn1.forward(conv1.forward(x))), 2)
+
+    # Conv block 2: [batch, 32, 14, 14] -> [batch, 64, 7, 7]
+    x2 = maxPool2d(relu(bn2.forward(conv2.forward(x1))), 2)
+
+    # Flatten: [batch, 64*7*7] -> [batch, 3136]
+    batchSize = tensorShape(x2)[0]
+    flat = reshape(x2, [batchSize, 64 * 7 * 7])
+
+    # FC layers: [batch, 3136] -> [batch, 128] -> [batch, 10]
+    h = relu(fc1.forward(flat))
+    fc2.forward(h)
+}
+
+# Forward pass (eval mode — BN uses accumulated running stats)
+cnnEval(conv1: Conv2D, bn1: BatchNorm2D, conv2: Conv2D, bn2: BatchNorm2D, fc1: Linear, fc2: Linear, images: Tensor) -> Tensor = {
+    x = unsqueeze(images, 1)
+    x1 = maxPool2d(relu(bn1.forwardEval(conv1.forward(x))), 2)
+    x2 = maxPool2d(relu(bn2.forwardEval(conv2.forward(x1))), 2)
+    batchSize = tensorShape(x2)[0]
+    flat = reshape(x2, [batchSize, 64 * 7 * 7])
+    h = relu(fc1.forward(flat))
+    fc2.forward(h)
+}
+
+# Evaluate one batch
+evalBatch(conv1: Conv2D, bn1: BatchNorm2D, conv2: Conv2D, bn2: BatchNorm2D, fc1: Linear, fc2: Linear, images: Tensor, labels: Tensor) -> Int = {
+    logits = cnnEval(conv1, bn1, conv2, bn2, fc1, fc2, images)
+    preds = argmax(logits, 1).squeeze(1)
+    countEqual(preds, labels)
+}
+
+main() = {
+    println("Loading MNIST from safetensors...")
+    data = loadSafetensors("tutorial/data/mnist.safetensors")
+    trainImages = getTensor(data, "train_images")
+    trainLabels = getTensor(data, "train_labels")
+    testImages = getTensor(data, "test_images")
+    testLabels = getTensor(data, "test_labels")
+
+    nTrain = tensorShape(trainImages)[0]
+    nTest = tensorShape(testImages)[0]
+
+    println("  Train: " ++ show(tensorShape(trainImages)))
+    println("  Test:  " ++ show(tensorShape(testImages)))
+
+    # Create trainable CNN (Kaiming-initialized)
+    params = paramMapCreate()
+    conv1 = convLayer(params, 1, 32, 3, 1)     # 1->32 channels, 3x3, pad=1
+    bn1 = batchNormLayer(params, 32)
+    conv2 = convLayer(params, 32, 64, 3, 1)    # 32->64 channels, 3x3, pad=1
+    bn2 = batchNormLayer(params, 64)
+    fc1 = linearLayer(params, 3136, 128)        # flatten -> 128
+    fc2 = linearLayer(params, 128, 10)          # 128 -> 10 classes
+
+    opt = adam(params, 0.001)
+
+    batchSize = 64
+    numEpochs = 5
+
+    println("")
+    println("Training CNN on MNIST:")
+    println("  Model: Conv(32,3x3) -> BN -> Conv(64,3x3) -> BN -> FC(128) -> FC(10)")
+    println("  Optimizer: Adam(lr=0.001)")
+    println("  Batch size: " ++ show(batchSize) ++ ", Epochs: " ++ show(numEpochs))
+    println("")
+
+    var epoch = 0
+    while epoch < numEpochs {
+        var totalLoss = 0.0
+        var nBatches = 0
+        var start = 0
+
+        while start < nTrain {
+            curBatch = min(batchSize, nTrain - start)
+            images = trainImages.sliceDim(0, start, curBatch)
+            labels = trainLabels.sliceDim(0, start, curBatch)
+
+            logits = cnnForward(conv1, bn1, conv2, bn2, fc1, fc2, images)
+            loss = crossEntropyLoss(logits, labels)
+            lv = trainStep(opt, loss)
+
+            totalLoss = totalLoss + lv
+            nBatches = nBatches + 1
+            start = start + batchSize
+        }
+
+        avgLoss = totalLoss / toFloat(nBatches)
+        println("  Epoch " ++ show(epoch + 1) ++ "/" ++ show(numEpochs) ++ " - avg loss: " ++ show(avgLoss))
+        epoch = epoch + 1
+    }
+
+    # Evaluate on test set (using eval mode for batch norm)
+    println("")
+    println("Evaluating on test set...")
+    var correct = 0
+    var testStart = 0
+    evalBatchSize = 100
+
+    while testStart < nTest {
+        images = testImages.sliceDim(0, testStart, evalBatchSize)
+        labels = testLabels.sliceDim(0, testStart, evalBatchSize)
+        correct = correct + evalBatch(conv1, bn1, conv2, bn2, fc1, fc2, images, labels)
+        testStart = testStart + evalBatchSize
+    }
+
+    pct = toFloat(correct) * 100.0 / toFloat(nTest)
+    println("  Test accuracy: " ++ show(correct) ++ "/" ++ show(nTest) ++ " = " ++ show(pct) ++ "%")
+
+    0
+}

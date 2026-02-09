@@ -5,7 +5,9 @@
 use candle_core::{DType, Device, Tensor};
 use candle_nn::rnn::{LSTM, LSTMConfig, LSTMState, RNN};
 use candle_nn::optim::{AdamW, Optimizer as CandleOptimizer, ParamsAdamW, SGD};
-use candle_nn::{loss, VarBuilder, VarMap};
+use candle_nn::batch_norm::BatchNorm;
+use candle_nn::conv::{Conv2d, Conv2dConfig};
+use candle_nn::{loss, Module, ModuleT, VarBuilder, VarMap};
 use nostos_extension::*;
 use parking_lot::Mutex;
 use std::collections::HashMap;
@@ -41,6 +43,15 @@ const PARAM_MAP_TYPE_ID: u64 = 6;
 // Type ID for optimizers (SGD or AdamW)
 const OPTIMIZER_TYPE_ID: u64 = 7;
 
+// Type ID for Conv2d layers
+const CONV2D_TYPE_ID: u64 = 8;
+
+// Type ID for Linear layers (candle_nn::Linear)
+const LINEAR_TYPE_ID: u64 = 9;
+
+// Type ID for BatchNorm layers
+const BATCH_NORM_TYPE_ID: u64 = 10;
+
 fn register(reg: &mut ExtRegistry) {
     // === Declare opaque types ===
     reg.add_opaque_type("Tensor");
@@ -50,6 +61,9 @@ fn register(reg: &mut ExtRegistry) {
     reg.add_opaque_type("LSTMState");
     reg.add_opaque_type("ParamMap");
     reg.add_opaque_type("Optimizer");
+    reg.add_opaque_type("Conv2D");
+    reg.add_opaque_type("Linear");
+    reg.add_opaque_type("BatchNorm2D");
 
     // === Tensor creation ===
     reg.add_fn("Candle.zeros", "(List[Int]) -> Tensor", tensor_zeros);
@@ -145,6 +159,22 @@ fn register(reg: &mut ExtRegistry) {
     reg.add_fn("Candle.scaledDotProductAttention", "(Tensor, Tensor, Tensor) -> Tensor", scaled_dot_product_attention);
     reg.add_fn("Candle.multiHeadAttention", "(Tensor, Int, Tensor, Tensor, Tensor, Tensor) -> Tensor", multi_head_attention);
     reg.add_fn("Candle.lstmAttention", "(LSTM, Tensor, Int, Tensor, Tensor, Tensor, Tensor) -> Tensor", lstm_attention);
+
+    // === Convolution & Pooling ===
+    reg.add_fn("Candle.conv2d", "(Tensor, Tensor, Int, Int) -> Tensor", tensor_conv2d);
+    reg.add_fn("Candle.conv2dBias", "(Tensor, Tensor, Tensor, Int, Int) -> Tensor", tensor_conv2d_bias);
+    reg.add_fn("Candle.maxPool2d", "(Tensor, Int) -> Tensor", tensor_max_pool2d);
+
+    // === Trainable Layers (candle-nn, proper Kaiming init) ===
+    reg.add_fn("Candle.convLayer", "(ParamMap, Int, Int, Int, Int) -> Conv2D", conv_layer_create);
+    reg.add_fn("Candle.convLayerAuto", "(ParamMap, Int, Int, Int, Int) -> Conv2D", conv_layer_create_auto);
+    reg.add_fn("Candle.convForward", "(Conv2D, Tensor) -> Tensor", conv_layer_forward);
+    reg.add_fn("Candle.linearLayer", "(ParamMap, Int, Int) -> Linear", linear_layer_create);
+    reg.add_fn("Candle.linearLayerAuto", "(ParamMap, Int, Int) -> Linear", linear_layer_create_auto);
+    reg.add_fn("Candle.linearForward", "(Linear, Tensor) -> Tensor", linear_layer_forward);
+    reg.add_fn("Candle.batchNormLayer", "(ParamMap, Int) -> BatchNorm2D", batch_norm_layer_create);
+    reg.add_fn("Candle.bnForward", "(BatchNorm2D, Tensor) -> Tensor", batch_norm_forward_train);
+    reg.add_fn("Candle.bnForwardEval", "(BatchNorm2D, Tensor) -> Tensor", batch_norm_forward_eval);
 
     // === Primitives for Nostos-level layers ===
     reg.add_fn("Candle.sigmoid", "(Tensor) -> Tensor", tensor_sigmoid);
@@ -1144,6 +1174,188 @@ fn rope_frequencies(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> 
         tensor_to_value(cos),
         tensor_to_value(sin),
     ]))
+}
+
+// ==================== Convolution & Pooling ====================
+
+/// 2D convolution: conv2d(input [N,C,H,W], kernel [Cout,Cin,kH,kW], stride, padding) -> [N,Cout,Hout,Wout]
+fn tensor_conv2d(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let input = value_to_tensor(&args[0])?;
+    let kernel = value_to_tensor(&args[1])?;
+    let stride = args[2].as_i64()? as usize;
+    let padding = args[3].as_i64()? as usize;
+    let result = input.conv2d(kernel, padding, stride, 1, 1).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// 2D convolution with bias: conv2d(input, kernel, bias [Cout], stride, padding)
+fn tensor_conv2d_bias(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let input = value_to_tensor(&args[0])?;
+    let kernel = value_to_tensor(&args[1])?;
+    let bias = value_to_tensor(&args[2])?;
+    let stride = args[3].as_i64()? as usize;
+    let padding = args[4].as_i64()? as usize;
+    let result = input.conv2d(kernel, padding, stride, 1, 1).map_err(|e| e.to_string())?;
+    // Add bias: reshape bias to [1, Cout, 1, 1] for broadcasting
+    let bias = bias.reshape((1, bias.elem_count(), 1, 1)).map_err(|e| e.to_string())?;
+    let result = result.broadcast_add(&bias).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Max pooling 2D: maxPool2d(input [N,C,H,W], kernelSize) -> [N,C,H/k,W/k]
+fn tensor_max_pool2d(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let input = value_to_tensor(&args[0])?;
+    let kernel_size = args[1].as_i64()? as usize;
+    let result = input.max_pool2d(kernel_size).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+// ==================== Trainable Layers (candle-nn) ====================
+
+fn conv2d_cleanup(ptr: usize, type_id: u64) {
+    if type_id == CONV2D_TYPE_ID && ptr != 0 {
+        unsafe { let _ = Box::from_raw(ptr as *mut Conv2d); }
+    }
+}
+
+fn conv2d_to_value(conv: Conv2d) -> Value {
+    Value::gc_handle(Box::new(conv), CONV2D_TYPE_ID, conv2d_cleanup)
+}
+
+fn value_to_conv2d(v: &Value) -> Result<&Conv2d, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != CONV2D_TYPE_ID {
+        return Err(format!("Expected Conv2D (type_id={}), got type_id={}", CONV2D_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 { return Err("Conv2D handle is null".to_string()); }
+    Ok(unsafe { &*(handle.ptr as *const Conv2d) })
+}
+
+fn linear_cleanup(ptr: usize, type_id: u64) {
+    if type_id == LINEAR_TYPE_ID && ptr != 0 {
+        unsafe { let _ = Box::from_raw(ptr as *mut candle_nn::Linear); }
+    }
+}
+
+fn linear_to_value(lin: candle_nn::Linear) -> Value {
+    Value::gc_handle(Box::new(lin), LINEAR_TYPE_ID, linear_cleanup)
+}
+
+fn value_to_linear(v: &Value) -> Result<&candle_nn::Linear, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != LINEAR_TYPE_ID {
+        return Err(format!("Expected Linear (type_id={}), got type_id={}", LINEAR_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 { return Err("Linear handle is null".to_string()); }
+    Ok(unsafe { &*(handle.ptr as *const candle_nn::Linear) })
+}
+
+/// Create trainable Conv2D layer: convLayer(params, "name", inC, outC, kernelSize, padding) -> Conv2D
+fn conv_layer_create(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let in_channels = args[1].as_i64()? as usize;
+    let out_channels = args[2].as_i64()? as usize;
+    let kernel_size = args[3].as_i64()? as usize;
+    let padding = args[4].as_i64()? as usize;
+
+    let name = next_param_name();
+    let varmap = varmap_mtx.lock();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
+    let vb = vb.pp(&name);
+    let cfg = Conv2dConfig { padding, stride: 1, dilation: 1, groups: 1 };
+    let conv = candle_nn::conv::conv2d(in_channels, out_channels, kernel_size, cfg, vb)
+        .map_err(|e| e.to_string())?;
+    Ok(conv2d_to_value(conv))
+}
+
+fn conv_layer_create_auto(args: &[Value], ctx: &ExtContext) -> Result<Value, String> {
+    conv_layer_create(args, ctx)
+}
+
+/// Forward pass through Conv2D layer
+fn conv_layer_forward(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let conv = value_to_conv2d(&args[0])?;
+    let input = value_to_tensor(&args[1])?;
+    let result = conv.forward(input).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Create trainable Linear layer: linearLayer(params, inDim, outDim) -> Linear
+fn linear_layer_create(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let in_dim = args[1].as_i64()? as usize;
+    let out_dim = args[2].as_i64()? as usize;
+
+    let name = next_param_name();
+    let varmap = varmap_mtx.lock();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
+    let vb = vb.pp(&name);
+    let lin = candle_nn::linear(in_dim, out_dim, vb).map_err(|e| e.to_string())?;
+    Ok(linear_to_value(lin))
+}
+
+fn linear_layer_create_auto(args: &[Value], ctx: &ExtContext) -> Result<Value, String> {
+    linear_layer_create(args, ctx)
+}
+
+/// Forward pass through Linear layer
+fn linear_layer_forward(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let lin = value_to_linear(&args[0])?;
+    let input = value_to_tensor(&args[1])?;
+    let result = lin.forward(input).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+// ==================== BatchNorm ====================
+
+fn batch_norm_cleanup(ptr: usize, type_id: u64) {
+    if type_id == BATCH_NORM_TYPE_ID && ptr != 0 {
+        unsafe { let _ = Box::from_raw(ptr as *mut BatchNorm); }
+    }
+}
+
+fn batch_norm_to_value(bn: BatchNorm) -> Value {
+    Value::gc_handle(Box::new(bn), BATCH_NORM_TYPE_ID, batch_norm_cleanup)
+}
+
+fn value_to_batch_norm(v: &Value) -> Result<&BatchNorm, String> {
+    let handle = v.as_gc_handle()?;
+    if handle.type_id != BATCH_NORM_TYPE_ID {
+        return Err(format!("Expected BatchNorm2D (type_id={}), got type_id={}", BATCH_NORM_TYPE_ID, handle.type_id));
+    }
+    if handle.ptr == 0 { return Err("BatchNorm2D handle is null".to_string()); }
+    Ok(unsafe { &*(handle.ptr as *const BatchNorm) })
+}
+
+/// Create trainable BatchNorm2D layer: batchNormLayer(params, numFeatures) -> BatchNorm2D
+fn batch_norm_layer_create(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let varmap_mtx = value_to_param_map(&args[0])?;
+    let num_features = args[1].as_i64()? as usize;
+
+    let name = next_param_name();
+    let varmap = varmap_mtx.lock();
+    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &Device::Cpu);
+    let vb = vb.pp(&name);
+    let cfg = candle_nn::batch_norm::BatchNormConfig::default();
+    let bn = candle_nn::batch_norm::batch_norm(num_features, cfg, vb)
+        .map_err(|e| e.to_string())?;
+    Ok(batch_norm_to_value(bn))
+}
+
+/// Forward pass through BatchNorm2D (training mode - updates running stats)
+fn batch_norm_forward_train(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let bn = value_to_batch_norm(&args[0])?;
+    let input = value_to_tensor(&args[1])?;
+    let result = bn.forward_t(input, true).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
+}
+
+/// Forward pass through BatchNorm2D (eval mode - uses running stats)
+fn batch_norm_forward_eval(args: &[Value], _ctx: &ExtContext) -> Result<Value, String> {
+    let bn = value_to_batch_norm(&args[0])?;
+    let input = value_to_tensor(&args[1])?;
+    let result = bn.forward_t(input, false).map_err(|e| e.to_string())?;
+    Ok(tensor_to_value(result))
 }
 
 // ==================== LSTM ====================
